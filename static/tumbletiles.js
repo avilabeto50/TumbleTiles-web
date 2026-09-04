@@ -5,7 +5,7 @@
 const TEMP = 1;
 const GLUEFUNC = {'N':1, 'E':1, 'S':1, 'W':1, 'A':1, 'B':1, 'C':1, 'D':1, 'X':1, 'Y':1, 'Z':1};
 const DEBUGGING = false;
-let FACTORYMODE = false;
+let FACTORYMODE = true;
 
 let TILE_UID_COUNTER = 0;
 
@@ -240,15 +240,28 @@ class Board {
         }
     }
     
-    Tumble(direction) {
+    Tumble(direction, gluesDuringMotion = false) {
         if (!["N", "S", "E", "W"].includes(direction)) {
             console.log("Invalid direction. Use N, E, S, or W");
             return;
         }
-        
-        let stepTaken = this.Step(direction);
-        while (stepTaken) {
-            stepTaken = this.Step(direction);
+
+        if (gluesDuringMotion) {
+            // TumbleGlue mode: activate glues after every individual step so that
+            // tiles can bond with each other as they "fly past" (matching glues on
+            // adjacent faces fire the moment the tiles become neighbours, even if
+            // they would continue moving past each other in a plain Tumble).
+            let stepTaken = this.Step(direction);
+            this.ActivateGlues();
+            while (stepTaken) {
+                stepTaken = this.Step(direction);
+                this.ActivateGlues();
+            }
+        } else {
+            let stepTaken = this.Step(direction);
+            while (stepTaken) {
+                stepTaken = this.Step(direction);
+            }
         }
         
         // Factory mode: remove tiles that hit borders
@@ -278,7 +291,9 @@ class Board {
             // Remove empty polyominoes
             this.Polyominoes = this.Polyominoes.filter(p => p.Tiles.length > 0);
         }
-        
+
+        // Final glue activation (no-op in gluesDuringMotion mode since we already
+        // did it after the last step, but harmless and keeps the two paths consistent).
         this.ActivateGlues();
     }
     

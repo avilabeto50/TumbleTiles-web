@@ -7,7 +7,8 @@ let scriptRunning = false;
 let scriptInterval = null;
 let showLabels = true;
 let showGlues = true;
-let gluesActivated = false;
+let gluesActivated = true;
+let gluesDuringMotion = true;
 let quickAddMode = false;
 let quickDeleteMode = false;
 let isCtrlPressed = false;
@@ -135,6 +136,12 @@ function setupEventListeners() {
     document.getElementById('factory-mode').addEventListener('change', (e) => {
         FACTORYMODE = e.target.checked;
         console.log('Factory mode:', FACTORYMODE ? 'enabled' : 'disabled');
+    });
+
+    // Glue During Motion toggle
+    document.getElementById('glue-during-motion').addEventListener('change', (e) => {
+        gluesDuringMotion = e.target.checked;
+        console.log('Glue during motion:', gluesDuringMotion ? 'enabled' : 'disabled');
     });
     
     // Tile controls
@@ -982,7 +989,7 @@ function tumbleDirection(direction) {
     saveStateToHistory();
     clearSelection(false);
     
-    board.Tumble(direction);
+    board.Tumble(direction, gluesDuringMotion);
     drawBoard();
     updateInfo();
 }

@@ -36,21 +36,15 @@
                             <label for="example-select">Select Example:</label>
                             <select id="example-select">
                                 <option value="">-- Select Example --</option>
-                                <option value="Cat.xml">Cat</option>
-                                <option value="Cat2.xml">Cat 2</option>
-                                <option value="Shuriken.xml">Shuriken</option>
-                                <option value="Reconfiguration.xml">Reconfiguration</option>
-                                <option value="ReconfigurationEmpty.xml">Reconfiguration Empty</option>
-                                <option value="Relocation.xml">Relocation</option>
-                                <option value="RelocationEmpty.xml">Relocation Empty</option>
-                                <option value="x-monotonc repcator.xml">X-Monotonic Replicator</option>
+                                <option value="singleton-factory.xml">X-Monotone Factory</option>
+                                <option value="domino-factory.xml">Domino Factory</option>
                             </select>
                         </div>
                         <button id="load-example">Load Example</button>
                         
                         <div class="form-group" style="margin-top: 15px;">
                             <label>
-                                <input type="checkbox" id="activate-on-load">
+                                <input type="checkbox" id="activate-on-load" checked>
                                 Activate glues on load
                             </label>
                         </div>
@@ -109,6 +103,15 @@
                             <button class="dir-btn" data-dir="S">↓</button>
                         </div>
                         <button id="activate-glues">Activate Glues</button>
+                        <div class="form-group" style="margin-top: 10px;">
+                            <label>
+                                <input type="checkbox" id="glue-during-motion" checked>
+                                Glue During Motion
+                            </label>
+                            <p style="font-size: 11px; color: #666; margin-top: 4px;">
+                                When enabled, tiles bond with matching glues as they fly past each other (checked after every step).
+                            </p>
+                        </div>
                         <button id="undo-action" style="margin-top: 10px;">↶ Undo (Ctrl+Z)</button>
                         
                         <h3 style="margin-top: 20px; font-size: 1.1em;">Script Execution</h3>
@@ -149,7 +152,7 @@
                     <div class="section-content">
                         <div class="form-group">
                             <label>
-                                <input type="checkbox" id="factory-mode">
+                                <input type="checkbox" id="factory-mode" checked>
                                 Enable Factory Mode
                             </label>
                         </div>
