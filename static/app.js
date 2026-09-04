@@ -648,6 +648,8 @@ function addTileAtMouse(e) {
         const p = new Polyomino(board.poly_id_c++, gridX, gridY, glues, color);
         p.Tiles[0].name = name;
         board.Add(p);
+        // Bond with any adjacent tiles that have matching glues immediately on placement.
+        board.ActivateGlues();
     }
     
     drawBoard();
