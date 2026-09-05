@@ -14,7 +14,7 @@
             <div class="control-panel" id="control-panel">
                 <button id="close-settings" class="close-btn">&times;</button>
                 <!-- File Tab -->
-                <details class="collapsible-section">
+                <details class="collapsible-section" open>
                     <summary>File</summary>
                     <div class="section-content">
                         <input type="file" id="file-input" accept=".xml" style="display: none;">
@@ -32,12 +32,33 @@
                         <button id="export-board">Export</button>
 
                         <h3 style="margin-top: 20px; font-size: 1.1em;">Load Examples</h3>
+
+                        <!-- Instructions callout -->
+                        <div style="
+                            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                            border: 1px solid #334155;
+                            border-left: 3px solid #667eea;
+                            border-radius: 6px;
+                            padding: 10px 12px;
+                            margin-bottom: 12px;
+                            font-size: 11px;
+                            line-height: 1.6;
+                            color: #94a3b8;
+                        ">
+                            <div style="font-weight: 600; color: #c4b5fd; margin-bottom: 5px;">Running an example</div>
+                            <ol style="margin: 0; padding-left: 16px;">
+                                <li>Select an example from the dropdown below.</li>
+                                <li>Click <strong style="color:#e2e8f0;">Load Example</strong>.</li>
+                                <li>Use the arrow buttons or <strong style="color:#e2e8f0;">W A S D</strong> keys to tilt the board and watch tiles tumble and self-assemble.</li>
+                            </ol>
+                        </div>
+
                         <div class="form-group">
                             <label for="example-select">Select Example:</label>
                             <select id="example-select">
                                 <option value="">-- Select Example --</option>
-                                <option value="singleton-factory.xml">X-Monotone Factory</option>
-                                <option value="domino-factory.xml">Domino Factory</option>
+                                <option value="singleton-factory.xml">X-Monotone RRF (Thm. 2)</option>
+                                <option value="domino-factory.xml">Drop-shape URF (Thm. 1)</option>
                             </select>
                         </div>
                         <button id="load-example">Load Example</button>
