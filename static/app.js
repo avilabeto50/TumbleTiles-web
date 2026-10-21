@@ -15,6 +15,25 @@ let isCtrlPressed = false;
 let undoHistory = [];
 const MAX_UNDO_HISTORY = 50;
 
+// Mode & Control Groups state
+let currentMode = 'full-tilt'; // 'full-tilt' | 'control-groups' | 'single-step'
+let controlGroups = [0, 1]; // Active group indices (0-indexed: Group 1 = 0, Group 2 = 1)
+const GROUP_COLORS = [
+    '#3b82f6', // Group 1: Blue
+    '#f97316', // Group 2: Orange
+    '#10b981', // Group 3: Emerald
+    '#8b5cf6', // Group 4: Purple
+    '#ec4899', // Group 5: Pink
+    '#06b6d4', // Group 6: Cyan
+    '#eab308', // Group 7: Yellow
+    '#84cc16'  // Group 8: Lime
+];
+let cgMirrorType = 'horizontal'; // 'horizontal' | 'full'
+let cgGluesDuringMotion = true;
+let assignGroupMode = false;
+let cgScriptRunning = false;
+let cgScriptInterval = null;
+
 // Tile palette system
 let tilePalette = [];
 let selectedPaletteIndex = -1;
@@ -66,6 +85,11 @@ function init() {
     // Setup event listeners
     setupEventListeners();
 
+    // Setup tab navigation, mode selector, and control groups UI
+    setupTabs();
+    setupModeSelector();
+    setupControlGroups();
+
     // Draw initial board, centered in the viewport
     centerBoardHandler();
     
@@ -94,20 +118,24 @@ function resizeCanvas() {
 
 function setupEventListeners() {
     // Settings panel controls
-    document.getElementById('close-settings').addEventListener('click', () => {
-        document.getElementById('control-panel').classList.add('hidden');
-        document.querySelector('.main-content').classList.add('controls-hidden');
-        document.getElementById('open-settings').style.display = 'block';
-        // The panel width animates over 0.3s; re-measure once it settles.
-        setTimeout(() => { resizeCanvas(); drawBoard(); }, 320);
-    });
+    const togglePanel = () => {
+        const panel = document.getElementById('control-panel');
+        const main = document.querySelector('.main-content');
+        if (panel.classList.contains('hidden')) {
+            panel.classList.remove('hidden');
+            main.classList.remove('controls-hidden');
+        } else {
+            panel.classList.add('hidden');
+            main.classList.add('controls-hidden');
+        }
+        setTimeout(() => { resizeCanvas(); drawBoard(); }, 260);
+    };
 
-    document.getElementById('open-settings').addEventListener('click', () => {
-        document.getElementById('control-panel').classList.remove('hidden');
-        document.querySelector('.main-content').classList.remove('controls-hidden');
-        document.getElementById('open-settings').style.display = 'none';
-        setTimeout(() => { resizeCanvas(); drawBoard(); }, 320);
-    });
+    const closeBtn = document.getElementById('close-settings');
+    if (closeBtn) closeBtn.addEventListener('click', togglePanel);
+
+    const openBtn = document.getElementById('open-settings');
+    if (openBtn) openBtn.addEventListener('click', togglePanel);
 
     // Keep the canvas viewport in sync with the window size.
     window.addEventListener('resize', () => {
@@ -196,11 +224,11 @@ function setupEventListeners() {
         }
     });
     
-    // Movement buttons
-    document.querySelectorAll('.dir-btn').forEach(btn => {
+    // Movement buttons (standard tilt)
+    document.querySelectorAll('.dir-btn:not(.cg-dir-btn)').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const direction = e.target.dataset.dir;
-            tumbleDirection(direction);
+            const direction = e.currentTarget.dataset.dir;
+            if (direction) tumbleDirection(direction);
         });
     });
     
@@ -329,6 +357,432 @@ function setupEventListeners() {
     canvas.addEventListener('click', canvasClickHandler);
 }
 
+// ============================================
+// Top Tabs Navigation
+// ============================================
+function setupTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+    const tabTitle = document.getElementById('current-tab-title');
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetTab = btn.dataset.tab;
+            tabBtns.forEach(b => b.classList.remove('active'));
+            tabPanes.forEach(p => p.classList.remove('active'));
+
+            btn.classList.add('active');
+            const activePane = document.getElementById(targetTab);
+            if (activePane) activePane.classList.add('active');
+            if (tabTitle) tabTitle.textContent = btn.textContent;
+
+            // If sidebar is hidden, open it when a tab is clicked
+            const panel = document.getElementById('control-panel');
+            const main = document.querySelector('.main-content');
+            if (panel && panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                main.classList.remove('controls-hidden');
+                setTimeout(() => { resizeCanvas(); drawBoard(); }, 260);
+            }
+        });
+    });
+}
+
+// ============================================
+// Mode Selector & Views
+// ============================================
+function setupModeSelector() {
+    const selector = document.getElementById('mode-selector');
+    if (!selector) return;
+    selector.addEventListener('change', (e) => {
+        currentMode = e.target.value;
+        updateModeView();
+        drawBoard();
+    });
+}
+
+function updateModeView() {
+    const stdView = document.getElementById('movement-standard-view');
+    const cgView = document.getElementById('movement-groups-view');
+    const assignBtn = document.getElementById('toggle-assign-group-mode');
+
+    if (currentMode === 'control-groups') {
+        if (stdView) stdView.style.display = 'none';
+        if (cgView) cgView.style.display = 'block';
+        if (assignBtn) assignBtn.style.display = 'block';
+        renderControlGroupsUI();
+    } else {
+        if (stdView) stdView.style.display = 'block';
+        if (cgView) cgView.style.display = 'none';
+        if (assignBtn) {
+            assignBtn.style.display = 'none';
+            if (assignGroupMode) toggleAssignGroupMode();
+        }
+    }
+}
+
+// ============================================
+// Control Groups System
+// ============================================
+function setupControlGroups() {
+    renderControlGroupsUI();
+
+    // Add group button
+    const addBtn = document.getElementById('cg-add-group');
+    if (addBtn) {
+        addBtn.addEventListener('click', () => {
+            if (controlGroups.length >= GROUP_COLORS.length) {
+                alert(`Maximum of ${GROUP_COLORS.length} groups supported.`);
+                return;
+            }
+            controlGroups.push(controlGroups.length);
+            renderControlGroupsUI();
+        });
+    }
+
+    // Remove group button
+    const removeBtn = document.getElementById('cg-remove-group');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+            if (controlGroups.length <= 2) {
+                alert('At least 2 control groups are required.');
+                return;
+            }
+            const removed = controlGroups.pop();
+            // Reassign tiles in removed group to group 0
+            for (let p of board.Polyominoes) {
+                for (let t of p.Tiles) {
+                    if (t.group === removed) t.group = 0;
+                }
+            }
+            for (let t of board.ConcreteTiles) {
+                if (t.group === removed) t.group = 0;
+            }
+            renderControlGroupsUI();
+            drawBoard();
+        });
+    }
+
+    // Submode pills (Mirror vs Sequences)
+    document.querySelectorAll('.submode-pill').forEach(pill => {
+        pill.addEventListener('click', (e) => {
+            document.querySelectorAll('.submode-pill').forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            const submode = pill.dataset.submode;
+            const mirrorSec = document.getElementById('cg-mirror-section');
+            const seqSec = document.getElementById('cg-sequences-section');
+            if (submode === 'mirror') {
+                if (mirrorSec) mirrorSec.style.display = 'block';
+                if (seqSec) seqSec.style.display = 'none';
+            } else {
+                if (mirrorSec) mirrorSec.style.display = 'none';
+                if (seqSec) seqSec.style.display = 'block';
+            }
+        });
+    });
+
+    // Mirror type radio change
+    document.querySelectorAll('input[name="cg-mirror-type"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            cgMirrorType = e.target.value;
+            updateMirrorLegend();
+        });
+    });
+
+    // CG directional buttons
+    document.querySelectorAll('.cg-dir-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const baseDir = e.currentTarget.dataset.baseDir;
+            tumbleControlGroupsWithBase(baseDir);
+        });
+    });
+
+    // CG Activate glues
+    const cgGluesBtn = document.getElementById('cg-activate-glues');
+    if (cgGluesBtn) {
+        cgGluesBtn.addEventListener('click', () => {
+            document.getElementById('activate-glues').click();
+        });
+    }
+
+    // CG Undo button
+    const cgUndoBtn = document.getElementById('cg-undo-action');
+    if (cgUndoBtn) {
+        cgUndoBtn.addEventListener('click', undoAction);
+    }
+
+    // CG Glue during motion
+    const cgGlueMotion = document.getElementById('cg-glue-during-motion');
+    if (cgGlueMotion) {
+        cgGlueMotion.addEventListener('change', (e) => {
+            cgGluesDuringMotion = e.target.checked;
+        });
+    }
+
+    // Sequence controls
+    const runSeqBtn = document.getElementById('cg-run-sequences');
+    if (runSeqBtn) runSeqBtn.addEventListener('click', runCgSequences);
+
+    const stopSeqBtn = document.getElementById('cg-stop-sequences');
+    if (stopSeqBtn) stopSeqBtn.addEventListener('click', stopCgSequences);
+
+    const stepSeqBtn = document.getElementById('cg-step-lockstep');
+    if (stepSeqBtn) stepSeqBtn.addEventListener('click', stepCgSequencesSingle);
+
+    // Assign group mode button
+    const assignBtn = document.getElementById('toggle-assign-group-mode');
+    if (assignBtn) {
+        assignBtn.addEventListener('click', toggleAssignGroupMode);
+    }
+
+    updateMirrorLegend();
+}
+
+function renderControlGroupsUI() {
+    const listContainer = document.getElementById('cg-group-list');
+    const groupSelect = document.getElementById('tile-group');
+    const seqContainer = document.getElementById('cg-sequences-inputs');
+
+    if (!listContainer) return;
+
+    // Save existing sequence input values if any
+    const existingSeqValues = {};
+    if (seqContainer) {
+        controlGroups.forEach(g => {
+            const inp = document.getElementById(`cg-seq-${g}`);
+            if (inp) existingSeqValues[g] = inp.value;
+        });
+    }
+
+    // 1. Group list
+    listContainer.innerHTML = '';
+    controlGroups.forEach(g => {
+        let count = 0;
+        if (board) {
+            for (let p of board.Polyominoes) {
+                for (let t of p.Tiles) {
+                    if ((t.group || 0) === g) count++;
+                }
+            }
+            for (let t of board.ConcreteTiles) {
+                if ((t.group || 0) === g) count++;
+            }
+        }
+
+        const color = GROUP_COLORS[g % GROUP_COLORS.length];
+        const card = document.createElement('div');
+        card.className = 'cg-group-card';
+        card.innerHTML = `
+            <div class="cg-group-info">
+                <span class="cg-group-dot" style="background: ${color};"></span>
+                <span class="cg-group-name">Group ${g + 1}</span>
+            </div>
+            <span class="cg-group-badge">${count} tile${count === 1 ? '' : 's'}</span>
+        `;
+        listContainer.appendChild(card);
+    });
+
+    // 2. Tile Settings group selector
+    if (groupSelect) {
+        const curVal = groupSelect.value;
+        groupSelect.innerHTML = '';
+        controlGroups.forEach(g => {
+            const opt = document.createElement('option');
+            opt.value = g;
+            opt.textContent = `Group ${g + 1}`;
+            groupSelect.appendChild(opt);
+        });
+        if (controlGroups.includes(parseInt(curVal))) {
+            groupSelect.value = curVal;
+        } else {
+            groupSelect.value = 0;
+        }
+    }
+
+    // 3. Custom sequence inputs
+    if (seqContainer) {
+        seqContainer.innerHTML = '';
+        controlGroups.forEach(g => {
+            const color = GROUP_COLORS[g % GROUP_COLORS.length];
+            const row = document.createElement('div');
+            row.className = 'cg-seq-row';
+            const defaultSeq = g === 0 ? 'NESW' : (g === 1 ? 'SWNE' : 'NESW');
+            const savedVal = existingSeqValues[g] !== undefined ? existingSeqValues[g] : defaultSeq;
+            row.innerHTML = `
+                <div class="cg-seq-label">
+                    <span class="cg-group-dot" style="background: ${color};"></span>
+                    <span>Group ${g + 1}:</span>
+                </div>
+                <input type="text" id="cg-seq-${g}" class="form-control mono-field cg-seq-input" 
+                       value="${savedVal}" placeholder="e.g. NESW">
+            `;
+            seqContainer.appendChild(row);
+        });
+    }
+
+    updateMirrorLegend();
+}
+
+function updateMirrorLegend() {
+    const legend = document.getElementById('cg-mirror-legend');
+    if (!legend) return;
+    if (cgMirrorType === 'horizontal') {
+        legend.innerHTML = `<strong>Horizontal Mirror:</strong><br>• Group 1 moves with base direction (e.g. E / W)<br>• Group 2 moves opposite horizontally (E ↔ W), while N & S remain equal.`;
+    } else {
+        legend.innerHTML = `<strong>Full Mirror:</strong><br>• Group 1 moves with base direction<br>• Group 2 moves inverted (E ↔ W, N ↔ S).`;
+    }
+}
+
+function getGroupDirectionsFromBase(baseDir) {
+    const groupDirections = {};
+    for (let g of controlGroups) {
+        if (g % 2 === 0) {
+            // Even groups (0, 2...) move in base direction
+            groupDirections[g] = baseDir;
+        } else {
+            // Odd groups (1, 3...) move in mirrored direction
+            if (cgMirrorType === 'horizontal') {
+                if (baseDir === 'E') groupDirections[g] = 'W';
+                else if (baseDir === 'W') groupDirections[g] = 'E';
+                else groupDirections[g] = baseDir; // N and S unaffected!
+            } else {
+                if (baseDir === 'E') groupDirections[g] = 'W';
+                else if (baseDir === 'W') groupDirections[g] = 'E';
+                else if (baseDir === 'N') groupDirections[g] = 'S';
+                else if (baseDir === 'S') groupDirections[g] = 'N';
+            }
+        }
+    }
+    return groupDirections;
+}
+
+function tumbleControlGroupsWithBase(baseDir) {
+    const groupDirections = getGroupDirectionsFromBase(baseDir);
+    saveStateToHistory();
+    clearSelection(false);
+    board.TumbleControlGroups(groupDirections, cgGluesDuringMotion);
+    drawBoard();
+    updateInfo();
+    renderControlGroupsUI();
+}
+
+function runCgSequences() {
+    if (cgScriptRunning) return;
+    const seqs = {};
+    let maxLen = 0;
+    for (let g of controlGroups) {
+        const input = document.getElementById(`cg-seq-${g}`);
+        const val = (input ? input.value : '').trim().toUpperCase();
+        if (!val) {
+            alert(`Please enter a sequence for Group ${g + 1}`);
+            return;
+        }
+        for (let c of val) {
+            if (!'NESW'.includes(c)) {
+                alert(`Invalid direction "${c}" in Group ${g + 1}. Only N, E, S, W are allowed.`);
+                return;
+            }
+        }
+        seqs[g] = val;
+        if (val.length > maxLen) maxLen = val.length;
+    }
+
+    cgScriptRunning = true;
+    const runBtn = document.getElementById('cg-run-sequences');
+    if (runBtn) runBtn.disabled = true;
+
+    const delay = parseInt(document.getElementById('cg-script-delay').value) || 500;
+    const loop = document.getElementById('cg-script-loop').checked;
+
+    let stepIdx = 0;
+    cgScriptInterval = setInterval(() => {
+        if (stepIdx >= maxLen) {
+            if (loop) {
+                stepIdx = 0;
+            } else {
+                stopCgSequences();
+                return;
+            }
+        }
+
+        const groupDirections = {};
+        for (let g of controlGroups) {
+            const seq = seqs[g];
+            groupDirections[g] = seq[stepIdx % seq.length];
+        }
+
+        saveStateToHistory();
+        clearSelection(false);
+        board.TumbleControlGroups(groupDirections, cgGluesDuringMotion);
+        drawBoard();
+        updateInfo();
+        renderControlGroupsUI();
+        stepIdx++;
+    }, delay);
+}
+
+function stopCgSequences() {
+    if (cgScriptInterval) {
+        clearInterval(cgScriptInterval);
+        cgScriptInterval = null;
+    }
+    cgScriptRunning = false;
+    const runBtn = document.getElementById('cg-run-sequences');
+    if (runBtn) runBtn.disabled = false;
+}
+
+function stepCgSequencesSingle() {
+    const groupDirections = {};
+    for (let g of controlGroups) {
+        const input = document.getElementById(`cg-seq-${g}`);
+        const val = (input ? input.value : '').trim().toUpperCase();
+        if (val.length > 0) {
+            groupDirections[g] = val[0];
+            if (val.length > 1) {
+                input.value = val.slice(1) + val[0];
+            }
+        }
+    }
+    saveStateToHistory();
+    clearSelection(false);
+    board.TumbleControlGroups(groupDirections, cgGluesDuringMotion);
+    drawBoard();
+    updateInfo();
+    renderControlGroupsUI();
+}
+
+function toggleAssignGroupMode() {
+    assignGroupMode = !assignGroupMode;
+    const btn = document.getElementById('toggle-assign-group-mode');
+    if (assignGroupMode) {
+        quickAddMode = false;
+        quickDeleteMode = false;
+        selectMode = false;
+        clearSelection(false);
+        if (btn) btn.classList.add('active');
+        canvas.style.cursor = 'pointer';
+    } else {
+        if (btn) btn.classList.remove('active');
+        canvas.style.cursor = 'default';
+    }
+    updateModeButtons();
+}
+
+function assignGroupAtMouse(e) {
+    const coords = getGridCoordinatesFromEvent(e);
+    if (!coords) return;
+    const { x: gridX, y: gridY } = coords;
+    const tile = board.coordToTile[gridX][gridY];
+    if (!tile) return;
+    const groupElem = document.getElementById('tile-group');
+    const group = groupElem ? parseInt(groupElem.value) || 0 : 0;
+    if (tile.group !== group) {
+        tile.group = group;
+        drawBoard();
+        renderControlGroupsUI();
+    }
+}
+
 function resizeBoardHandler() {
     const width = parseInt(document.getElementById('board-width').value);
     const height = parseInt(document.getElementById('board-height').value);
@@ -348,7 +802,8 @@ function resizeBoardHandler() {
                     y: tile.y,
                     color: tile.color,
                     glues: [...tile.glues],
-                    name: tile.name
+                    name: tile.name,
+                    group: tile.group !== undefined ? tile.group : 0
                 });
             }
         }
@@ -362,7 +817,8 @@ function resizeBoardHandler() {
                 color: board.ConcreteColor,
                 glues: [],
                 name: conc.name,
-                isConcrete: true
+                isConcrete: true,
+                group: conc.group !== undefined ? conc.group : 0
             });
         }
     }
@@ -374,12 +830,13 @@ function resizeBoardHandler() {
     // Re-add tiles
     for (let tileData of tiles) {
         if (tileData.isConcrete) {
-            const t = new Tile(null, 0, tileData.x, tileData.y, [], tileData.color, true);
+            const t = new Tile(null, 0, tileData.x, tileData.y, [], tileData.color, true, tileData.group || 0);
             t.name = tileData.name;
             board.AddConc(t);
         } else {
             const p = new Polyomino(board.poly_id_c++, tileData.x, tileData.y, tileData.glues, tileData.color);
             p.Tiles[0].name = tileData.name;
+            p.Tiles[0].group = tileData.group || 0;
             board.Add(p);
         }
     }
@@ -422,6 +879,7 @@ function toggleAddMode() {
     if (quickAddMode) {
         quickDeleteMode = false; // Disable delete mode
         selectMode = false;
+        assignGroupMode = false;
         clearSelection(false);
     }
     updateModeButtons();
@@ -432,6 +890,7 @@ function toggleDeleteMode() {
     if (quickDeleteMode) {
         quickAddMode = false; // Disable add mode
         selectMode = false;
+        assignGroupMode = false;
         clearSelection(false);
     }
     updateModeButtons();
@@ -441,6 +900,7 @@ function updateModeButtons() {
     const addBtn = document.getElementById('toggle-add-mode');
     const deleteBtn = document.getElementById('toggle-delete-mode');
     const selectBtn = document.getElementById('toggle-select-mode');
+    const assignBtn = document.getElementById('toggle-assign-group-mode');
     
     if (quickAddMode) {
         addBtn.classList.add('active');
@@ -464,13 +924,25 @@ function updateModeButtons() {
         selectBtn.classList.remove('active');
         selectBtn.textContent = 'Enable Select Mode';
     }
+
+    if (assignGroupMode) {
+        if (assignBtn) assignBtn.classList.add('active');
+        canvas.style.cursor = 'pointer';
+    } else {
+        if (assignBtn) assignBtn.classList.remove('active');
+    }
     
-    if (!quickAddMode && !quickDeleteMode && !selectMode) {
+    if (!quickAddMode && !quickDeleteMode && !selectMode && !assignGroupMode) {
         canvas.style.cursor = 'default';
     }
 }
 
 function canvasMouseDown(e) {
+    if (assignGroupMode) {
+        assignGroupAtMouse(e);
+        return;
+    }
+
     if (selectMode) {
         const start = getGridCoordinatesFromEvent(e, true);
         if (!start) return;
@@ -508,6 +980,11 @@ function canvasMouseDown(e) {
 function canvasMouseMove(e) {
     // Track the last hovered grid cell so paste can place tiles under the cursor
     lastHoverGrid = getGridCoordinatesFromEvent(e, true);
+
+    if (e.buttons === 1 && assignGroupMode) {
+        assignGroupAtMouse(e);
+        return;
+    }
 
     if (selectMode && selectionMoveStart && (e.buttons & 1) === 1) {
         const current = getGridCoordinatesFromEvent(e, true);
@@ -611,6 +1088,11 @@ function canvasWheel(e) {
 function canvasClickHandler(e) {
     if (selectMode) return;
 
+    if (assignGroupMode) {
+        assignGroupAtMouse(e);
+        return;
+    }
+
     // Handle quick add mode
     if (quickAddMode) {
         addTileAtMouse(e);
@@ -633,6 +1115,8 @@ function addTileAtMouse(e) {
     const name = document.getElementById('tile-name').value;
     const color = document.getElementById('tile-color').value;
     const isConcrete = document.getElementById('tile-concrete').checked;
+    const groupElem = document.getElementById('tile-group');
+    const group = groupElem ? parseInt(groupElem.value) || 0 : 0;
     const glues = [
         document.getElementById('glue-n').value || ' ',
         document.getElementById('glue-e').value || ' ',
@@ -641,12 +1125,13 @@ function addTileAtMouse(e) {
     ];
     
     if (isConcrete) {
-        const t = new Tile(null, 0, gridX, gridY, glues, color, true);
+        const t = new Tile(null, 0, gridX, gridY, glues, color, true, group);
         t.name = name;
         board.AddConc(t);
     } else {
         const p = new Polyomino(board.poly_id_c++, gridX, gridY, glues, color);
         p.Tiles[0].name = name;
+        p.Tiles[0].group = group;
         board.Add(p);
         // Bond with any adjacent tiles that have matching glues immediately on placement.
         board.ActivateGlues();
@@ -654,6 +1139,7 @@ function addTileAtMouse(e) {
     
     drawBoard();
     updateInfo();
+    renderControlGroupsUI();
 }
 
 function deleteTileAtMouse(e) {
@@ -667,6 +1153,7 @@ function deleteTileAtMouse(e) {
     
     drawBoard();
     updateInfo();
+    renderControlGroupsUI();
 }
 
 function getGridCoordinatesFromEvent(e, clampToBoard = false) {
@@ -788,7 +1275,8 @@ function copySelectionHandler() {
             color: tile.color,
             glues: [...tile.glues],
             name: tile.name || '',
-            isConcrete: tile.isConcrete === true
+            isConcrete: tile.isConcrete === true,
+            group: tile.group !== undefined ? tile.group : 0
         });
     }
     
@@ -827,6 +1315,7 @@ function pasteSelectionHandler() {
     setSelectionStatus(`Pasted ${copiedSelection.length} tile(s).`);
     drawBoard();
     updateInfo();
+    renderControlGroupsUI();
 }
 
 function validatePlacement(baseX, baseY, items, allowedOccupied = new Set()) {
@@ -845,13 +1334,15 @@ function validatePlacement(baseX, baseY, items, allowedOccupied = new Set()) {
 }
 
 function placeTileAt(tileData, x, y) {
+    const group = tileData.group !== undefined ? tileData.group : 0;
     if (tileData.isConcrete) {
-        const t = new Tile(null, 0, x, y, [...tileData.glues], tileData.color, true);
+        const t = new Tile(null, 0, x, y, [...tileData.glues], tileData.color, true, group);
         t.name = tileData.name;
         board.AddConc(t);
     } else {
         const p = new Polyomino(board.poly_id_c++, x, y, [...tileData.glues], tileData.color);
         p.Tiles[0].name = tileData.name;
+        p.Tiles[0].group = group;
         board.Add(p);
     }
 }
@@ -982,7 +1473,11 @@ function handleKeyPress(e) {
     
     if (direction) {
         e.preventDefault(); // Prevent scrolling with WASD and arrow keys
-        tumbleDirection(direction);
+        if (currentMode === 'control-groups') {
+            tumbleControlGroupsWithBase(direction);
+        } else {
+            tumbleDirection(direction);
+        }
     }
 }
 
@@ -1011,7 +1506,8 @@ function saveStateToHistory() {
                 y: t.y,
                 glues: [...t.glues],
                 color: t.color,
-                name: t.name
+                name: t.name,
+                group: (t.group !== undefined && t.group !== null) ? t.group : 0
             }))
         })),
         concreteTiles: board.ConcreteTiles.map(t => ({
@@ -1019,7 +1515,8 @@ function saveStateToHistory() {
             y: t.y,
             glues: [...t.glues],
             color: t.color,
-            name: t.name
+            name: t.name,
+            group: (t.group !== undefined && t.group !== null) ? t.group : 0
         })),
         width: board.Cols,
         height: board.Rows,
@@ -1051,11 +1548,12 @@ function undoAction() {
         const firstTile = pData.tiles[0];
         const p = new Polyomino(pData.id, firstTile.x, firstTile.y, firstTile.glues, firstTile.color);
         p.Tiles[0].name = firstTile.name;
+        p.Tiles[0].group = firstTile.group || 0;
         
         // Add remaining tiles
         for (let i = 1; i < pData.tiles.length; i++) {
             const tData = pData.tiles[i];
-            const t = new Tile(p, pData.id, tData.x, tData.y, tData.glues, tData.color);
+            const t = new Tile(p, pData.id, tData.x, tData.y, tData.glues, tData.color, false, tData.group || 0);
             t.name = tData.name;
             p.Tiles.push(t);
             board.coordToTile[tData.x][tData.y] = t;
@@ -1069,7 +1567,7 @@ function undoAction() {
     
     // Restore concrete tiles
     for (let tData of state.concreteTiles) {
-        const t = new Tile(null, 0, tData.x, tData.y, tData.glues, tData.color, true);
+        const t = new Tile(null, 0, tData.x, tData.y, tData.glues, tData.color, true, tData.group || 0);
         t.name = tData.name;
         board.AddConc(t);
     }
@@ -1081,6 +1579,7 @@ function undoAction() {
     
     drawBoard();
     updateInfo();
+    renderControlGroupsUI();
 }
 
 function runScriptHandler() {
@@ -1342,6 +1841,22 @@ function drawTile(tile, useHighDetail = true, c = ctx, scale = zoom) {
     c.lineWidth = 2 / scale; // Adjust line width for zoom
     c.strokeRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
 
+    // Draw control group indicator dot
+    if (currentMode === 'control-groups' || (tile.group !== undefined && tile.group > 0)) {
+        const grp = (tile.group !== undefined && tile.group !== null) ? tile.group : 0;
+        const dotRadius = Math.max(3, 4.5 / scale);
+        const dotX = x + 3 + dotRadius;
+        const dotY = y + 3 + dotRadius;
+
+        c.beginPath();
+        c.arc(dotX, dotY, dotRadius, 0, Math.PI * 2);
+        c.fillStyle = GROUP_COLORS[grp % GROUP_COLORS.length];
+        c.fill();
+        c.lineWidth = 1.2 / scale;
+        c.strokeStyle = '#ffffff';
+        c.stroke();
+    }
+
     // Skip detailed rendering in performance mode or when zoomed out
     if (performanceMode || !useHighDetail) {
         // In performance mode, still show concrete indicators
@@ -1542,6 +2057,7 @@ function parseXML(xmlText) {
             let glues = [' ', ' ', ' ', ' '];
             let isConcrete = false;
             let name = '';
+            let group = 0;
             
             if (usesTileConfigurationFormat) {
                 const locationElem = tileElem.getElementsByTagName('Location')[0];
@@ -1563,12 +2079,24 @@ function parseXML(xmlText) {
                 
                 const labelElem = tileElem.getElementsByTagName('Label')[0];
                 name = labelElem ? labelElem.textContent : '';
+
+                const groupElem = tileElem.getElementsByTagName('Group')[0];
+                if (groupElem && groupElem.textContent) {
+                    const parsedG = parseInt(groupElem.textContent.trim());
+                    if (!Number.isNaN(parsedG)) group = parsedG;
+                }
             } else {
                 x = parseInt(tileElem.getAttribute('x'));
                 y = parseInt(tileElem.getAttribute('y'));
                 color = normalizeXmlColor(tileElem.getAttribute('color'), '#3498db');
                 isConcrete = (tileElem.getAttribute('concrete') ?? '').trim().toLowerCase() === 'true';
                 name = tileElem.getAttribute('name') || '';
+
+                const groupAttr = tileElem.getAttribute('group');
+                if (groupAttr) {
+                    const parsedG = parseInt(groupAttr);
+                    if (!Number.isNaN(parsedG)) group = parsedG;
+                }
                 
                 const glueElements = tileElem.getElementsByTagName('glue');
                 for (let glueElem of glueElements) {
@@ -1586,15 +2114,24 @@ function parseXML(xmlText) {
             }
             
             if (isConcrete) {
-                const t = new Tile(null, 0, x, y, glues, color, true);
+                const t = new Tile(null, 0, x, y, glues, color, true, group);
                 t.name = name;
                 board.AddConc(t);
             } else {
                 const p = new Polyomino(board.poly_id_c++, x, y, glues, color);
                 p.Tiles[0].name = name;
+                p.Tiles[0].group = group;
                 board.Add(p);
             }
+
+            if (group >= controlGroups.length) {
+                for (let g = controlGroups.length; g <= group; g++) {
+                    if (!controlGroups.includes(g)) controlGroups.push(g);
+                }
+            }
         }
+        
+        renderControlGroupsUI();
         
         // Activate glues if checkbox is checked
         if (document.getElementById('activate-on-load').checked) {
@@ -1663,6 +2200,7 @@ function saveFileHandler() {
         xmlText += `      <EastGlue>${glues[1] && glues[1] !== ' ' ? escapeXml(glues[1]) : 'None'}</EastGlue>\n`;
         xmlText += `      <WestGlue>${glues[3] && glues[3] !== ' ' ? escapeXml(glues[3]) : 'None'}</WestGlue>\n`;
         xmlText += `      <Concrete>${concreteValue ? 'True' : 'False'}</Concrete>\n`;
+        xmlText += `      <Group>${tile.group !== undefined ? tile.group : 0}</Group>\n`;
         xmlText += `      <Label>${escapeXml(tileName)}</Label>\n`;
         xmlText += `    </Tile>\n`;
     };
@@ -1950,6 +2488,8 @@ function saveTileType() {
     const name = document.getElementById('tile-name').value || 'Tile ' + (tilePalette.length + 1);
     const color = document.getElementById('tile-color').value;
     const isConcrete = document.getElementById('tile-concrete').checked;
+    const groupElem = document.getElementById('tile-group');
+    const group = groupElem ? parseInt(groupElem.value) || 0 : 0;
     const glues = [
         document.getElementById('glue-n').value || ' ',
         document.getElementById('glue-e').value || ' ',
@@ -1961,7 +2501,8 @@ function saveTileType() {
         name: name,
         color: color,
         isConcrete: isConcrete,
-        glues: glues
+        glues: glues,
+        group: group
     };
     
     tilePalette.push(tileType);
@@ -2015,6 +2556,24 @@ function renderTilePalette() {
             box-shadow: ${isSelected ? '0 0 10px rgba(102, 126, 234, 0.5)' : 'none'};
             transition: all 0.2s;
         `;
+
+        // Add control group badge if set
+        if (tileType.group !== undefined && tileType.group !== null) {
+            const groupDot = document.createElement('div');
+            groupDot.style.cssText = `
+                position: absolute;
+                top: 3px;
+                left: 3px;
+                width: 9px;
+                height: 9px;
+                border-radius: 50%;
+                background: ${GROUP_COLORS[tileType.group % GROUP_COLORS.length]};
+                border: 1px solid #ffffff;
+                z-index: 2;
+            `;
+            groupDot.title = `Group ${tileType.group + 1}`;
+            tileButton.appendChild(groupDot);
+        }
         
         // Add glue indicators
         const glueOverlay = document.createElement('div');
@@ -2149,6 +2708,11 @@ function loadTileTypeToInputs(tileType) {
     document.getElementById('glue-s').value = tileType.glues[2] === ' ' ? '' : tileType.glues[2];
     document.getElementById('glue-w').value = tileType.glues[3] === ' ' ? '' : tileType.glues[3];
     
+    const groupElem = document.getElementById('tile-group');
+    if (groupElem && tileType.group !== undefined) {
+        groupElem.value = tileType.group;
+    }
+    
     console.log('Loaded tile type from palette:', tileType);
 }
 
@@ -2160,12 +2724,15 @@ function modifyTileType() {
     
     const oldTileType = tilePalette[selectedPaletteIndex];
     const oldName = oldTileType.name;
+    const groupElem = document.getElementById('tile-group');
+    const group = groupElem ? parseInt(groupElem.value) || 0 : 0;
     
     // Get current values from inputs
     const newTileType = {
         name: document.getElementById('tile-name').value || 'Tile ' + (selectedPaletteIndex + 1),
         color: document.getElementById('tile-color').value,
         isConcrete: document.getElementById('tile-concrete').checked,
+        group: group,
         glues: [
             document.getElementById('glue-n').value || ' ',
             document.getElementById('glue-e').value || ' ',
@@ -2189,6 +2756,7 @@ function modifyTileType() {
                     tile.color = newTileType.color;
                     tile.name = newTileType.name;
                     tile.glues = [...newTileType.glues];
+                    tile.group = group;
                     updatedCount++;
                 }
             }
@@ -2200,12 +2768,14 @@ function modifyTileType() {
                 conc.color = newTileType.color;
                 conc.name = newTileType.name;
                 conc.glues = [...newTileType.glues];
+                conc.group = group;
                 updatedCount++;
             }
         }
         
         if (updatedCount > 0) {
             drawBoard();
+            renderControlGroupsUI();
             console.log(`Updated ${updatedCount} tiles on the board`);
             alert(`Modified tile type and updated ${updatedCount} tile(s) on the board.`);
         } else {

@@ -15,7 +15,7 @@ function getNextUID() {
 
 // Tile class
 class Tile {
-    constructor(parent, id, x, y, glues, color, isConcrete) {
+    constructor(parent, id, x, y, glues, color, isConcrete, group = 0) {
         this.parent = parent;
         this.id = id;
         this.symbol = id;
@@ -24,6 +24,7 @@ class Tile {
         this.y = parseInt(y);
         this.uid = getNextUID();
         this.name = "";
+        this.group = (group !== undefined && group !== null) ? parseInt(group) : 0;
         
         if (isConcrete === true || isConcrete === "True") {
             this.isConcrete = true;
@@ -48,6 +49,24 @@ class Polyomino {
             this.NumTiles = 0;
         }
         this.HasMoved = false;
+    }
+    
+    getGroup() {
+        if (!this.Tiles || this.Tiles.length === 0) return 0;
+        const counts = {};
+        for (let t of this.Tiles) {
+            const g = (t.group !== undefined && t.group !== null) ? t.group : 0;
+            counts[g] = (counts[g] || 0) + 1;
+        }
+        let maxGroup = (this.Tiles[0].group !== undefined && this.Tiles[0].group !== null) ? this.Tiles[0].group : 0;
+        let maxCount = 0;
+        for (let g in counts) {
+            if (counts[g] > maxCount) {
+                maxCount = counts[g];
+                maxGroup = parseInt(g);
+            }
+        }
+        return maxGroup;
     }
     
     Join(poly) {
@@ -391,6 +410,184 @@ class Board {
         return stepTaken;
     }
     
+    StepControlGroups(groupDirections) {
+        for (let p of this.Polyominoes) {
+            p.HasMoved = false;
+        }
+
+        const getDir = (group) => {
+            if (!groupDirections) return null;
+            if (groupDirections instanceof Map) {
+                return groupDirections.get(group) || null;
+            }
+            return groupDirections[group] || null;
+        };
+
+        const pDeltas = new Map();
+        const pBlocked = new Map();
+
+        for (let p of this.Polyominoes) {
+            const group = p.getGroup();
+            const dir = getDir(group);
+            let dx = 0, dy = 0;
+            if (dir === 'N') dy = -1;
+            else if (dir === 'S') dy = 1;
+            else if (dir === 'W') dx = -1;
+            else if (dir === 'E') dx = 1;
+
+            pDeltas.set(p, { dx, dy, dir });
+            if (dx === 0 && dy === 0) {
+                pBlocked.set(p, true);
+            } else {
+                pBlocked.set(p, false);
+            }
+        }
+
+        let anyNewlyBlocked = true;
+        while (anyNewlyBlocked) {
+            anyNewlyBlocked = false;
+
+            for (let p of this.Polyominoes) {
+                if (pBlocked.get(p)) continue;
+
+                const { dx, dy } = pDeltas.get(p);
+
+                for (let tile of p.Tiles) {
+                    const targetX = tile.x + dx;
+                    const targetY = tile.y + dy;
+
+                    // Out of bounds check
+                    if (targetX < 0 || targetX >= this.Cols || targetY < 0 || targetY >= this.Rows) {
+                        pBlocked.set(p, true);
+                        anyNewlyBlocked = true;
+                        break;
+                    }
+
+                    // Collision with concrete or stationary/blocked polyomino
+                    const existing = this.coordToTile[targetX][targetY];
+                    if (existing) {
+                        if (existing.isConcrete) {
+                            pBlocked.set(p, true);
+                            anyNewlyBlocked = true;
+                            break;
+                        }
+                        if (existing.parent !== p) {
+                            const otherP = existing.parent;
+                            if (pBlocked.get(otherP)) {
+                                pBlocked.set(p, true);
+                                anyNewlyBlocked = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (pBlocked.get(p)) continue;
+
+                // Swap / head-on collision check with other polyominoes
+                for (let tile of p.Tiles) {
+                    const targetX = tile.x + dx;
+                    const targetY = tile.y + dy;
+                    const otherTile = this.coordToTile[targetX][targetY];
+                    if (otherTile && otherTile.parent !== p && !otherTile.isConcrete) {
+                        const otherP = otherTile.parent;
+                        const otherDelta = pDeltas.get(otherP);
+                        if (otherDelta) {
+                            if (otherTile.x + otherDelta.dx === tile.x && otherTile.y + otherDelta.dy === tile.y) {
+                                pBlocked.set(p, true);
+                                pBlocked.set(otherP, true);
+                                anyNewlyBlocked = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Co-target check: two distinct unblocked polyominoes attempting to enter the same coordinate
+            if (!anyNewlyBlocked) {
+                const targetMap = new Map();
+                for (let p of this.Polyominoes) {
+                    if (pBlocked.get(p)) continue;
+                    const { dx, dy } = pDeltas.get(p);
+                    for (let tile of p.Tiles) {
+                        const targetKey = `${tile.x + dx},${tile.y + dy}`;
+                        if (targetMap.has(targetKey)) {
+                            const otherP = targetMap.get(targetKey);
+                            if (otherP !== p) {
+                                pBlocked.set(p, true);
+                                pBlocked.set(otherP, true);
+                                anyNewlyBlocked = true;
+                            }
+                        } else {
+                            targetMap.set(targetKey, p);
+                        }
+                    }
+                }
+            }
+        }
+
+        let stepTaken = false;
+        for (let p of this.Polyominoes) {
+            if (!pBlocked.get(p)) {
+                const { dx, dy } = pDeltas.get(p);
+                if (dx !== 0 || dy !== 0) {
+                    stepTaken = true;
+                    p.HasMoved = true;
+
+                    for (let tile of p.Tiles) {
+                        this.coordToTile[tile.x][tile.y] = null;
+                    }
+                    for (let tile of p.Tiles) {
+                        tile.x += dx;
+                        tile.y += dy;
+                    }
+                }
+            }
+        }
+
+        this.remapArray();
+        return stepTaken;
+    }
+
+    TumbleControlGroups(groupDirections, gluesDuringMotion = false) {
+        if (gluesDuringMotion) {
+            let stepTaken = this.StepControlGroups(groupDirections);
+            this.ActivateGlues();
+            while (stepTaken) {
+                stepTaken = this.StepControlGroups(groupDirections);
+                this.ActivateGlues();
+            }
+        } else {
+            let stepTaken = this.StepControlGroups(groupDirections);
+            while (stepTaken) {
+                stepTaken = this.StepControlGroups(groupDirections);
+            }
+        }
+
+        if (FACTORYMODE) {
+            const tilesToRemove = [];
+            for (let p of this.Polyominoes) {
+                for (let tile of p.Tiles) {
+                    if (tile.x <= 0 || tile.x >= this.Cols - 1 || 
+                        tile.y <= 0 || tile.y >= this.Rows - 1) {
+                        tilesToRemove.push({ poly: p, tile: tile });
+                    }
+                }
+            }
+            for (let item of tilesToRemove) {
+                const tileIndex = item.poly.Tiles.indexOf(item.tile);
+                if (tileIndex > -1) {
+                    item.poly.Tiles.splice(tileIndex, 1);
+                    this.coordToTile[item.tile.x][item.tile.y] = null;
+                }
+            }
+            this.Polyominoes = this.Polyominoes.filter(p => p.Tiles.length > 0);
+        }
+
+        this.ActivateGlues();
+    }
+    
     relistPolyominoes() {
         const tileList = [];
         
@@ -407,6 +604,7 @@ class Board {
             const color = tile.color;
             const poly = new Polyomino(0, tile.x, tile.y, tile.glues, color);
             poly.Tiles[0].name = tile.name;
+            poly.Tiles[0].group = (tile.group !== undefined && tile.group !== null) ? tile.group : 0;
             this.Polyominoes.push(poly);
         }
         
