@@ -878,6 +878,7 @@ body {
     overflow: hidden;
     height: 100%;
     padding: 12px;
+    overscroll-behavior: contain;
 }
 
 #board-canvas {
@@ -885,8 +886,10 @@ body {
     border: 1px solid #cbd5e1;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
-    cursor: grab;
+    cursor: default;
     display: block;
+    touch-action: none;
+    overscroll-behavior: contain;
 }
 
 #board-canvas:active {

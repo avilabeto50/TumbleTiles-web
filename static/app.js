@@ -46,8 +46,19 @@ let panY = 0;
 const MIN_ZOOM = 0.01;
 const MAX_ZOOM = 5.0;
 let isDragging = false;
+let hasDragged = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
+let isSpacePressed = false;
+let isGestureActive = false;
+let gestureStartZoom = 1.0;
+let gestureStartPanX = 0;
+let gestureStartPanY = 0;
+let touchStartDist = null;
+let touchStartZoom = 1.0;
+let touchStartCenter = null;
+let touchStartPanX = 0;
+let touchStartPanY = 0;
 let selectMode = false;
 let selectionDragStart = null;
 let selectionDragCurrent = null;
@@ -176,8 +187,20 @@ function setupEventListeners() {
     document.getElementById('toggle-add-mode').addEventListener('click', toggleAddMode);
     document.getElementById('toggle-delete-mode').addEventListener('click', toggleDeleteMode);
     
-    // Keyboard controls for Ctrl key and shortcuts
+    // Keyboard controls for Ctrl key, Spacebar pan, and shortcuts
     document.addEventListener('keydown', (e) => {
+        // Spacebar hold for Inkscape/Figma canvas pan
+        if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+            if (!isSpacePressed) {
+                isSpacePressed = true;
+                if (!isDragging) {
+                    canvas.style.cursor = 'grab';
+                }
+            }
+            e.preventDefault();
+            return;
+        }
+
         if (e.ctrlKey) {
             isCtrlPressed = true;
             
@@ -211,6 +234,12 @@ function setupEventListeners() {
     });
     
     document.addEventListener('keyup', (e) => {
+        if (e.code === 'Space') {
+            isSpacePressed = false;
+            if (!isDragging) {
+                updateModeButtons();
+            }
+        }
         if (!e.ctrlKey) {
             isCtrlPressed = false;
         }
@@ -351,7 +380,20 @@ function setupEventListeners() {
     canvas.addEventListener('mousemove', canvasMouseMove);
     canvas.addEventListener('mouseup', canvasMouseUp);
     canvas.addEventListener('mouseleave', canvasMouseUp);
-    canvas.addEventListener('wheel', canvasWheel);
+    canvas.addEventListener('wheel', canvasWheel, { passive: false });
+    canvas.addEventListener('auxclick', (e) => {
+        if (e.button === 1) e.preventDefault();
+    });
+
+    // Safari gesture events for pinch/expand on trackpad
+    canvas.addEventListener('gesturestart', canvasGestureStart, { passive: false });
+    canvas.addEventListener('gesturechange', canvasGestureChange, { passive: false });
+    canvas.addEventListener('gestureend', canvasGestureEnd, { passive: false });
+
+    // Touch events for touchscreen / touch trackpad
+    canvas.addEventListener('touchstart', canvasTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', canvasTouchMove, { passive: false });
+    canvas.addEventListener('touchend', canvasTouchEnd, { passive: false });
     
     // Canvas click
     canvas.addEventListener('click', canvasClickHandler);
@@ -933,11 +975,23 @@ function updateModeButtons() {
     }
     
     if (!quickAddMode && !quickDeleteMode && !selectMode && !assignGroupMode) {
-        canvas.style.cursor = 'default';
+        canvas.style.cursor = isSpacePressed ? 'grab' : 'default';
     }
 }
 
 function canvasMouseDown(e) {
+    hasDragged = false;
+
+    // Spacebar held down or Middle-click (Inkscape style): pan canvas regardless of mode
+    if (isSpacePressed || e.button === 1) {
+        e.preventDefault();
+        isDragging = true;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        canvas.style.cursor = 'grabbing';
+        return;
+    }
+
     if (assignGroupMode) {
         assignGroupAtMouse(e);
         return;
@@ -981,12 +1035,12 @@ function canvasMouseMove(e) {
     // Track the last hovered grid cell so paste can place tiles under the cursor
     lastHoverGrid = getGridCoordinatesFromEvent(e, true);
 
-    if (e.buttons === 1 && assignGroupMode) {
+    if (e.buttons === 1 && assignGroupMode && !isSpacePressed) {
         assignGroupAtMouse(e);
         return;
     }
 
-    if (selectMode && selectionMoveStart && (e.buttons & 1) === 1) {
+    if (selectMode && selectionMoveStart && (e.buttons & 1) === 1 && !isSpacePressed) {
         const current = getGridCoordinatesFromEvent(e, true);
         if (!current) return;
         selectionMoveOffset = {
@@ -997,14 +1051,14 @@ function canvasMouseMove(e) {
         return;
     }
 
-    if (selectMode && selectionDragStart && (e.buttons & 1) === 1) {
+    if (selectMode && selectionDragStart && (e.buttons & 1) === 1 && !isSpacePressed) {
         selectionDragCurrent = getGridCoordinatesFromEvent(e, true);
         drawBoard();
         return;
     }
 
     // Handle drag-to-add/delete in quick modes (no isDragging check needed)
-    if (e.buttons === 1 && (quickAddMode || quickDeleteMode)) {
+    if (e.buttons === 1 && (quickAddMode || quickDeleteMode) && !isSpacePressed) {
         if (quickAddMode) {
             addTileAtMouse(e);
         } else if (quickDeleteMode) {
@@ -1017,6 +1071,9 @@ function canvasMouseMove(e) {
     
     const deltaX = e.clientX - lastMouseX;
     const deltaY = e.clientY - lastMouseY;
+    if (Math.hypot(deltaX, deltaY) > 2) {
+        hasDragged = true;
+    }
     
     panX += deltaX;
     panY += deltaY;
@@ -1063,29 +1120,146 @@ function canvasMouseUp(e) {
     }
 
     isDragging = false;
-    canvas.style.cursor = 'grab';
+    canvas.style.cursor = isSpacePressed ? 'grab' : (quickAddMode || quickDeleteMode || selectMode || assignGroupMode ? canvas.style.cursor : 'default');
 }
 
 function canvasWheel(e) {
     e.preventDefault();
-    
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * delta));
-    
-    // Zoom towards mouse position
+
+    if (isGestureActive) {
+        return;
+    }
+
+    // Determine if this is a zoom gesture:
+    // On Mac trackpads, pinch and expand gestures fire wheel events with e.ctrlKey === true.
+    // Also, Ctrl+wheel or Meta+wheel (Cmd+wheel on Mac) triggers zoom (standard Inkscape / graphics editor convention).
+    const isZoom = e.ctrlKey || e.metaKey;
+
+    if (isZoom) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // Calculate smooth zoom factor
+        let zoomFactor;
+        if (Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY)) {
+            // Discrete mouse wheel notch with Ctrl/Cmd key
+            zoomFactor = e.deltaY > 0 ? 0.88 : 1.14;
+        } else {
+            // Smooth trackpad pinch (e.deltaY is continuous and proportional to pinch speed)
+            // Negative deltaY is expand (zoom in), positive deltaY is pinch (zoom out)
+            zoomFactor = Math.exp(-e.deltaY * 0.01);
+        }
+
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * zoomFactor));
+        if (newZoom !== zoom) {
+            // Zoom centered directly at the mouse / trackpad pointer position
+            panX = mouseX - (mouseX - panX) * (newZoom / zoom);
+            panY = mouseY - (mouseY - panY) * (newZoom / zoom);
+            zoom = newZoom;
+            drawBoard();
+        }
+    } else {
+        // Two-finger glide across trackpad for moving across the canvas (or standard mouse wheel pan)
+        let unit = 1;
+        if (e.deltaMode === 1) { // DOM_DELTA_LINE
+            unit = 20;
+        } else if (e.deltaMode === 2) { // DOM_DELTA_PAGE
+            unit = window.innerHeight || 400;
+        }
+
+        // Two-finger glide: deltaX moves horizontally, deltaY moves vertically
+        panX -= e.deltaX * unit;
+        panY -= e.deltaY * unit;
+
+        drawBoard();
+    }
+}
+
+// ============================================
+// Trackpad Gesture Events (Safari / WebKit)
+// ============================================
+function canvasGestureStart(e) {
+    e.preventDefault();
+    isGestureActive = true;
+    gestureStartZoom = zoom;
+    gestureStartPanX = panX;
+    gestureStartPanY = panY;
+}
+
+function canvasGestureChange(e) {
+    e.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    
-    // Adjust pan to zoom towards cursor
-    panX = mouseX - (mouseX - panX) * (newZoom / zoom);
-    panY = mouseY - (mouseY - panY) * (newZoom / zoom);
-    
-    zoom = newZoom;
-    drawBoard();
+
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, gestureStartZoom * e.scale));
+    if (newZoom !== zoom) {
+        panX = mouseX - (mouseX - gestureStartPanX) * (newZoom / gestureStartZoom);
+        panY = mouseY - (mouseY - gestureStartPanY) * (newZoom / gestureStartZoom);
+        zoom = newZoom;
+        drawBoard();
+    }
+}
+
+function canvasGestureEnd(e) {
+    e.preventDefault();
+    setTimeout(() => {
+        isGestureActive = false;
+    }, 60);
+}
+
+// ============================================
+// Touch Events (Touchscreen & Stylus Support)
+// ============================================
+function canvasTouchStart(e) {
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        touchStartDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        touchStartZoom = zoom;
+        touchStartPanX = panX;
+        touchStartPanY = panY;
+        const rect = canvas.getBoundingClientRect();
+        touchStartCenter = {
+            x: (t1.clientX + t2.clientX) / 2 - rect.left,
+            y: (t1.clientY + t2.clientY) / 2 - rect.top
+        };
+    }
+}
+
+function canvasTouchMove(e) {
+    if (e.touches.length === 2 && touchStartDist && touchStartCenter) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const rect = canvas.getBoundingClientRect();
+        const curCenter = {
+            x: (t1.clientX + t2.clientX) / 2 - rect.left,
+            y: (t1.clientY + t2.clientY) / 2 - rect.top
+        };
+
+        const scale = dist / touchStartDist;
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, touchStartZoom * scale));
+
+        panX = curCenter.x - (touchStartCenter.x - touchStartPanX) * (newZoom / touchStartZoom);
+        panY = curCenter.y - (touchStartCenter.y - touchStartPanY) * (newZoom / touchStartZoom);
+        zoom = newZoom;
+        drawBoard();
+    }
+}
+
+function canvasTouchEnd(e) {
+    if (e.touches.length < 2) {
+        touchStartDist = null;
+        touchStartCenter = null;
+    }
 }
 
 function canvasClickHandler(e) {
+    if (hasDragged || isSpacePressed) return;
     if (selectMode) return;
 
     if (assignGroupMode) {
