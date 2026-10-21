@@ -60,6 +60,9 @@ let touchStartCenter = null;
 let touchStartPanX = 0;
 let touchStartPanY = 0;
 let selectMode = false;
+let isBoxSelecting = false;
+let selectionBoxStart = null;
+let selectionBoxCurrent = null;
 let selectionDragStart = null;
 let selectionDragCurrent = null;
 let selectedTiles = new Set();
@@ -201,7 +204,18 @@ function setupEventListeners() {
             return;
         }
 
-        if (e.ctrlKey) {
+        const typingInField = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+
+        // Delete or Backspace key deletes selected tiles
+        if (!typingInField && (e.key === 'Delete' || e.key === 'Backspace')) {
+            if (selectedTiles.size > 0) {
+                e.preventDefault();
+                deleteSelectedTiles();
+                return;
+            }
+        }
+
+        if (e.ctrlKey || e.metaKey) {
             isCtrlPressed = true;
             
             // Ctrl+A to toggle add mode
@@ -209,10 +223,14 @@ function setupEventListeners() {
                 e.preventDefault();
                 toggleAddMode();
             }
-            // Ctrl+D to toggle delete mode
+            // Ctrl+D: delete selected tiles if any are selected, else toggle delete mode
             if (e.key === 'd' || e.key === 'D') {
                 e.preventDefault();
-                toggleDeleteMode();
+                if (selectedTiles.size > 0) {
+                    deleteSelectedTiles();
+                } else {
+                    toggleDeleteMode();
+                }
             }
             // Ctrl+Z for undo
             if (e.key === 'z' || e.key === 'Z') {
@@ -220,8 +238,6 @@ function setupEventListeners() {
                 undoAction();
             }
             // Ctrl+C / Ctrl+V to copy and paste the selection
-            // (ignored while typing in a text field so normal copy/paste still works)
-            const typingInField = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
             if ((e.key === 'c' || e.key === 'C') && !typingInField) {
                 e.preventDefault();
                 copySelectionHandler();
@@ -360,7 +376,10 @@ function setupEventListeners() {
     });
     
     document.getElementById('center-board').addEventListener('click', centerBoardHandler);
-    document.getElementById('toggle-select-mode').addEventListener('click', toggleSelectMode);
+    const selectToggle = document.getElementById('toggle-select-mode');
+    if (selectToggle) selectToggle.addEventListener('click', toggleSelectMode);
+    const deleteSelBtn = document.getElementById('delete-selection');
+    if (deleteSelBtn) deleteSelBtn.addEventListener('click', deleteSelectedTiles);
     document.getElementById('copy-selection').addEventListener('click', copySelectionHandler);
     document.getElementById('paste-selection').addEventListener('click', pasteSelectionHandler);
     document.getElementById('clear-selection').addEventListener('click', clearSelectionHandler);
@@ -944,38 +963,43 @@ function updateModeButtons() {
     const selectBtn = document.getElementById('toggle-select-mode');
     const assignBtn = document.getElementById('toggle-assign-group-mode');
     
-    if (quickAddMode) {
-        addBtn.classList.add('active');
-        canvas.style.cursor = 'crosshair';
-    } else {
-        addBtn.classList.remove('active');
+    if (addBtn) {
+        if (quickAddMode) addBtn.classList.add('active');
+        else addBtn.classList.remove('active');
     }
     
-    if (quickDeleteMode) {
-        deleteBtn.classList.add('active');
-        canvas.style.cursor = 'not-allowed';
-    } else {
-        deleteBtn.classList.remove('active');
+    if (deleteBtn) {
+        if (quickDeleteMode) deleteBtn.classList.add('active');
+        else deleteBtn.classList.remove('active');
     }
 
-    if (selectMode) {
-        selectBtn.classList.add('active');
-        selectBtn.textContent = 'Disable Select Mode';
-        canvas.style.cursor = selectionMoveStart ? 'grabbing' : 'crosshair';
-    } else {
-        selectBtn.classList.remove('active');
-        selectBtn.textContent = 'Enable Select Mode';
+    if (selectBtn) {
+        if (selectMode) {
+            selectBtn.classList.add('active');
+            selectBtn.textContent = 'Disable Select Mode';
+        } else {
+            selectBtn.classList.remove('active');
+            selectBtn.textContent = 'Enable Select Mode';
+        }
     }
 
-    if (assignGroupMode) {
-        if (assignBtn) assignBtn.classList.add('active');
-        canvas.style.cursor = 'pointer';
-    } else {
-        if (assignBtn) assignBtn.classList.remove('active');
+    if (assignBtn) {
+        if (assignGroupMode) assignBtn.classList.add('active');
+        else assignBtn.classList.remove('active');
     }
-    
-    if (!quickAddMode && !quickDeleteMode && !selectMode && !assignGroupMode) {
-        canvas.style.cursor = isSpacePressed ? 'grab' : 'default';
+
+    if (canvas) {
+        if (quickAddMode) {
+            canvas.style.cursor = 'crosshair';
+        } else if (quickDeleteMode) {
+            canvas.style.cursor = 'not-allowed';
+        } else if (selectMode) {
+            canvas.style.cursor = selectionMoveStart ? 'grabbing' : 'crosshair';
+        } else if (assignGroupMode) {
+            canvas.style.cursor = 'pointer';
+        } else {
+            canvas.style.cursor = isSpacePressed ? 'grab' : 'default';
+        }
     }
 }
 
@@ -997,25 +1021,7 @@ function canvasMouseDown(e) {
         return;
     }
 
-    if (selectMode) {
-        const start = getGridCoordinatesFromEvent(e, true);
-        if (!start) return;
-        isDragging = false;
-        if (selectedTiles.size > 0 && selectedTiles.has(tileKey(start.x, start.y))) {
-            selectionMoveStart = start;
-            selectionMoveOffset = { x: 0, y: 0 };
-            updateModeButtons();
-            setSelectionStatus('Dragging selection...');
-            drawBoard();
-            return;
-        }
-        selectionDragStart = start;
-        selectionDragCurrent = start;
-        drawBoard();
-        return;
-    }
-
-    // Don't pan in quick add/delete modes
+    // Quick add / delete modes
     if (quickAddMode || quickDeleteMode) {
         if (quickAddMode) {
             addTileAtMouse(e);
@@ -1024,11 +1030,28 @@ function canvasMouseDown(e) {
         }
         return;
     }
-    
-    isDragging = true;
-    lastMouseX = e.clientX;
-    lastMouseY = e.clientY;
-    canvas.style.cursor = 'grabbing';
+
+    // Default mode: Selection & Moving (Desktop marquee box selection)
+    const start = getGridCoordinatesFromEvent(e, true);
+    const boardPos = getBoardCoordinatesFromEvent(e);
+
+    // If clicking on an already selected tile, initiate dragging/moving the selection
+    if (start && selectedTiles.size > 0 && selectedTiles.has(tileKey(start.x, start.y))) {
+        selectionMoveStart = start;
+        selectionMoveOffset = { x: 0, y: 0 };
+        canvas.style.cursor = 'grabbing';
+        setSelectionStatus('Dragging selection...');
+        drawBoard();
+        return;
+    }
+
+    // Otherwise, initiate desktop-style marquee box selection
+    isBoxSelecting = true;
+    selectionBoxStart = boardPos;
+    selectionBoxCurrent = boardPos;
+    selectionDragStart = start;
+    selectionDragCurrent = start;
+    canvas.style.cursor = 'crosshair';
 }
 
 function canvasMouseMove(e) {
@@ -1040,24 +1063,7 @@ function canvasMouseMove(e) {
         return;
     }
 
-    if (selectMode && selectionMoveStart && (e.buttons & 1) === 1 && !isSpacePressed) {
-        const current = getGridCoordinatesFromEvent(e, true);
-        if (!current) return;
-        selectionMoveOffset = {
-            x: current.x - selectionMoveStart.x,
-            y: current.y - selectionMoveStart.y
-        };
-        drawBoard();
-        return;
-    }
-
-    if (selectMode && selectionDragStart && (e.buttons & 1) === 1 && !isSpacePressed) {
-        selectionDragCurrent = getGridCoordinatesFromEvent(e, true);
-        drawBoard();
-        return;
-    }
-
-    // Handle drag-to-add/delete in quick modes (no isDragging check needed)
+    // Handle drag-to-add/delete in quick modes
     if (e.buttons === 1 && (quickAddMode || quickDeleteMode) && !isSpacePressed) {
         if (quickAddMode) {
             addTileAtMouse(e);
@@ -1066,61 +1072,121 @@ function canvasMouseMove(e) {
         }
         return;
     }
-    
-    if (!isDragging) return;
-    
-    const deltaX = e.clientX - lastMouseX;
-    const deltaY = e.clientY - lastMouseY;
-    if (Math.hypot(deltaX, deltaY) > 2) {
-        hasDragged = true;
-    }
-    
-    panX += deltaX;
-    panY += deltaY;
-    
-    lastMouseX = e.clientX;
-    lastMouseY = e.clientY;
-    
-    // Throttle redraw during pan for better performance
-    if (mouseMoveTimeout) {
-        return; // Skip this redraw
-    }
-    
-    mouseMoveTimeout = setTimeout(() => {
-        mouseMoveTimeout = null;
-    }, 16); // Throttle to ~60fps
-    
-    drawBoard();
-}
 
-function canvasMouseUp(e) {
-    if (selectMode && selectionMoveStart) {
-        const offset = selectionMoveOffset || { x: 0, y: 0 };
-        selectionMoveStart = null;
-        selectionMoveOffset = null;
-        updateModeButtons();
-        if (offset.x !== 0 || offset.y !== 0) {
-            moveSelectionByOffset(offset.x, offset.y);
-        } else {
-            setSelectionStatus(`Selected ${selectedTiles.size} tile(s).`);
-            drawBoard();
-        }
+    // Dragging selected tiles
+    if (selectionMoveStart && (e.buttons & 1) === 1 && !isSpacePressed) {
+        const current = getGridCoordinatesFromEvent(e, true);
+        if (!current) return;
+        const dx = current.x - selectionMoveStart.x;
+        const dy = current.y - selectionMoveStart.y;
+        if (dx !== 0 || dy !== 0) hasDragged = true;
+        selectionMoveOffset = { x: dx, y: dy };
+        drawBoard();
         return;
     }
 
-    if (selectMode && selectionDragStart) {
-        const end = selectionDragCurrent || getGridCoordinatesFromEvent(e, true);
-        if (end) {
-            captureSelectionRectangle(selectionDragStart, end);
+    // Dragging desktop marquee box selection
+    if (isBoxSelecting && (e.buttons & 1) === 1 && !isSpacePressed) {
+        const curPos = getBoardCoordinatesFromEvent(e);
+        if (Math.hypot(curPos.x - selectionBoxStart.x, curPos.y - selectionBoxStart.y) > 3) {
+            hasDragged = true;
         }
+        selectionBoxCurrent = curPos;
+
+        const boxMinX = Math.min(selectionBoxStart.x, selectionBoxCurrent.x);
+        const boxMaxX = Math.max(selectionBoxStart.x, selectionBoxCurrent.x);
+        const boxMinY = Math.min(selectionBoxStart.y, selectionBoxCurrent.y);
+        const boxMaxY = Math.max(selectionBoxStart.y, selectionBoxCurrent.y);
+
+        selectedTiles = getTilesEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY);
+        if (selectedTiles.size > 0) {
+            setSelectionStatus(`Selecting ${selectedTiles.size} tile(s)...`);
+        }
+        drawBoard();
+        return;
+    }
+
+    // Panning canvas (Spacebar or middle click)
+    if (isDragging) {
+        const deltaX = e.clientX - lastMouseX;
+        const deltaY = e.clientY - lastMouseY;
+        if (Math.hypot(deltaX, deltaY) > 2) {
+            hasDragged = true;
+        }
+        panX += deltaX;
+        panY += deltaY;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        drawBoard();
+        return;
+    }
+
+    // Hover cursor updates when no buttons are pressed
+    if (e.buttons === 0 && !isSpacePressed && !quickAddMode && !quickDeleteMode && !assignGroupMode) {
+        const hoverGrid = getGridCoordinatesFromEvent(e);
+        if (hoverGrid && selectedTiles.size > 0 && selectedTiles.has(tileKey(hoverGrid.x, hoverGrid.y))) {
+            canvas.style.cursor = 'grab';
+        } else {
+            canvas.style.cursor = 'default';
+        }
+    }
+}
+
+function canvasMouseUp(e) {
+    if (selectionMoveStart) {
+        const offset = selectionMoveOffset || { x: 0, y: 0 };
+        selectionMoveStart = null;
+        selectionMoveOffset = null;
+        if (offset.x !== 0 || offset.y !== 0) {
+            moveSelectionByOffset(offset.x, offset.y);
+        } else {
+            setSelectionStatus(`Selected ${selectedTiles.size} tile(s). Press Ctrl+D to delete.`);
+            drawBoard();
+        }
+        canvas.style.cursor = 'default';
+        return;
+    }
+
+    if (isBoxSelecting) {
+        isBoxSelecting = false;
+        const boxStart = selectionBoxStart;
+        const boxCur = selectionBoxCurrent;
+        selectionBoxStart = null;
+        selectionBoxCurrent = null;
         selectionDragStart = null;
         selectionDragCurrent = null;
+
+        if (!hasDragged) {
+            // Click without drag: click on a tile selects it; click on empty space deselects
+            const clickedGrid = getGridCoordinatesFromEvent(e);
+            if (clickedGrid && board.coordToTile[clickedGrid.x] && board.coordToTile[clickedGrid.x][clickedGrid.y]) {
+                selectedTiles = new Set([tileKey(clickedGrid.x, clickedGrid.y)]);
+                setSelectionStatus('Selected 1 tile. Press Ctrl+D to delete.');
+            } else {
+                clearSelection(false);
+                setSelectionStatus('Selection cleared.');
+            }
+        } else {
+            if (boxStart && boxCur) {
+                const boxMinX = Math.min(boxStart.x, boxCur.x);
+                const boxMaxX = Math.max(boxStart.x, boxCur.x);
+                const boxMinY = Math.min(boxStart.y, boxCur.y);
+                const boxMaxY = Math.max(boxStart.y, boxCur.y);
+                selectedTiles = getTilesEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY);
+            }
+            if (selectedTiles.size > 0) {
+                setSelectionStatus(`Selected ${selectedTiles.size} tile(s). Press Ctrl+D to delete.`);
+            } else {
+                setSelectionStatus('No tiles in selected area.');
+            }
+        }
+        canvas.style.cursor = 'default';
         drawBoard();
         return;
     }
 
     isDragging = false;
-    canvas.style.cursor = isSpacePressed ? 'grab' : (quickAddMode || quickDeleteMode || selectMode || assignGroupMode ? canvas.style.cursor : 'default');
+    canvas.style.cursor = isSpacePressed ? 'grab' : (quickAddMode || quickDeleteMode || assignGroupMode ? canvas.style.cursor : 'default');
 }
 
 function canvasWheel(e) {
@@ -1413,7 +1479,7 @@ function captureSelectionRectangle(start, end) {
     selectedTiles.clear();
     for (let x = minX; x <= maxX; x++) {
         for (let y = minY; y <= maxY; y++) {
-            if (board.coordToTile[x][y]) {
+            if (board.coordToTile[x] && board.coordToTile[x][y]) {
                 selectedTiles.add(tileKey(x, y));
             }
         }
@@ -1426,12 +1492,64 @@ function captureSelectionRectangle(start, end) {
     }
     
     selectionOrigin = { x: minX, y: minY };
-    setSelectionStatus(`Selected ${selectedTiles.size} tile(s).`);
+    setSelectionStatus(`Selected ${selectedTiles.size} tile(s). Press Ctrl+D to delete.`);
+}
+
+function getBoardCoordinatesFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    return {
+        x: (mouseX - panX) / zoom,
+        y: (mouseY - panY) / zoom
+    };
+}
+
+function getTilesEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY) {
+    const enclosed = new Set();
+    const minCol = Math.max(0, Math.floor(boxMinX / cellSize));
+    const maxCol = Math.min(board.Cols - 1, Math.floor(boxMaxX / cellSize));
+    const minRow = Math.max(0, Math.floor(boxMinY / cellSize));
+    const maxRow = Math.min(board.Rows - 1, Math.floor(boxMaxY / cellSize));
+
+    for (let x = minCol; x <= maxCol; x++) {
+        for (let y = minRow; y <= maxRow; y++) {
+            if (board.coordToTile[x] && board.coordToTile[x][y]) {
+                const tileLeft = x * cellSize;
+                const tileRight = (x + 1) * cellSize;
+                const tileTop = y * cellSize;
+                const tileBottom = (y + 1) * cellSize;
+
+                // Check intersection between tile and marquee rectangle
+                if (tileRight > boxMinX && tileLeft < boxMaxX &&
+                    tileBottom > boxMinY && tileTop < boxMaxY) {
+                    enclosed.add(tileKey(x, y));
+                }
+            }
+        }
+    }
+    return enclosed;
+}
+
+function deleteSelectedTiles() {
+    if (selectedTiles.size === 0) return false;
+    saveStateToHistory();
+    const coords = Array.from(selectedTiles).map(parseTileKey);
+    for (const { x, y } of coords) {
+        removeTileAtCoord(x, y);
+    }
+    const count = coords.length;
+    clearSelection(false);
+    drawBoard();
+    updateInfo();
+    renderControlGroupsUI();
+    setSelectionStatus(`Deleted ${count} selected tile(s).`);
+    return true;
 }
 
 function copySelectionHandler() {
     if (selectedTiles.size === 0) {
-        alert('No tiles selected. Enable select mode and drag over tiles first.');
+        alert('No tiles selected. Click & drag a box over tiles first.');
         return;
     }
     
@@ -1821,6 +1939,7 @@ function drawBoard() {
 }
 
 function drawBoardImmediate() {
+    if (!ctx || !canvas) return;
     const startTime = performance.now();
     
     // Save context state
@@ -1971,7 +2090,23 @@ function drawBoardImmediate() {
         ctx.restore();
     }
 
-    if (selectionDragStart && selectionDragCurrent) {
+    if (isBoxSelecting && selectionBoxStart && selectionBoxCurrent) {
+        const boxMinX = Math.min(selectionBoxStart.x, selectionBoxCurrent.x);
+        const boxMaxX = Math.max(selectionBoxStart.x, selectionBoxCurrent.x);
+        const boxMinY = Math.min(selectionBoxStart.y, selectionBoxCurrent.y);
+        const boxMaxY = Math.max(selectionBoxStart.y, selectionBoxCurrent.y);
+        const rectW = boxMaxX - boxMinX;
+        const rectH = boxMaxY - boxMinY;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.15)'; // modern blue translucent fill like desktop
+        ctx.fillRect(boxMinX, boxMinY, rectW, rectH);
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 1.5 / zoom;
+        ctx.setLineDash([6 / zoom, 4 / zoom]);
+        ctx.strokeRect(boxMinX, boxMinY, rectW, rectH);
+        ctx.restore();
+    } else if (selectionDragStart && selectionDragCurrent) {
         const minX = Math.min(selectionDragStart.x, selectionDragCurrent.x);
         const minY = Math.min(selectionDragStart.y, selectionDragCurrent.y);
         const maxX = Math.max(selectionDragStart.x, selectionDragCurrent.x);
@@ -2102,6 +2237,7 @@ function updateInfo() {
 
 function updateGlueButtonState() {
     const btn = document.getElementById('activate-glues');
+    if (!btn) return;
     if (gluesActivated) {
         btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
         btn.textContent = 'Glues Active ✓';

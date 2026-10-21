@@ -436,13 +436,16 @@
                     <section class="tab-pane" id="tab-tools">
                         <div class="card">
                             <h3 class="card-title">Selection Tools</h3>
-                            <button id="toggle-select-mode" class="mode-btn btn btn-secondary">Enable Select Mode</button>
+                            <div class="button-row">
+                                <button id="delete-selection" class="btn btn-danger btn-sm">Delete Selection (Ctrl+D)</button>
+                                <button id="clear-selection" class="btn btn-secondary btn-sm">Deselect All</button>
+                            </div>
                             <div class="button-row" style="margin-top: 8px;">
                                 <button id="copy-selection" class="btn btn-secondary btn-sm">Copy (Ctrl+C)</button>
                                 <button id="paste-selection" class="btn btn-secondary btn-sm">Paste (Ctrl+V)</button>
                             </div>
-                            <button id="clear-selection" class="btn btn-secondary btn-sm" style="margin-top: 6px;">Deselect All</button>
-                            <p id="selection-status" class="help-text" style="margin-top: 8px;">Selection mode is off.</p>
+                            <button id="toggle-select-mode" style="display: none;">Enable Select Mode</button>
+                            <p id="selection-status" class="help-text" style="margin-top: 8px;">Click & drag on canvas to box-select tiles. Press Ctrl+D or Delete to remove.</p>
                         </div>
 
                         <div class="card">
