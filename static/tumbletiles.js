@@ -504,23 +504,51 @@ class Board {
                 }
             }
 
-            // Co-target check: two distinct unblocked polyominoes attempting to enter the same coordinate
+            // Co-target check: multiple unblocked polyominoes attempting to enter the same coordinate
             if (!anyNewlyBlocked) {
-                const targetMap = new Map();
+                const cellCompetitors = new Map();
                 for (let p of this.Polyominoes) {
                     if (pBlocked.get(p)) continue;
                     const { dx, dy } = pDeltas.get(p);
+                    if (dx === 0 && dy === 0) continue;
                     for (let tile of p.Tiles) {
                         const targetKey = `${tile.x + dx},${tile.y + dy}`;
-                        if (targetMap.has(targetKey)) {
-                            const otherP = targetMap.get(targetKey);
-                            if (otherP !== p) {
-                                pBlocked.set(p, true);
-                                pBlocked.set(otherP, true);
-                                anyNewlyBlocked = true;
+                        if (!cellCompetitors.has(targetKey)) {
+                            cellCompetitors.set(targetKey, new Set());
+                        }
+                        cellCompetitors.get(targetKey).add(p);
+                    }
+                }
+
+                // Check for ties or losers based on group hierarchy priority (lower group index = higher priority)
+                for (let [targetKey, polysSet] of cellCompetitors.entries()) {
+                    if (polysSet.size > 1) {
+                        const polys = Array.from(polysSet);
+                        let minGroup = Infinity;
+                        for (let p of polys) {
+                            const g = p.getGroup();
+                            if (g < minGroup) minGroup = g;
+                        }
+
+                        const highestPriorityPolys = polys.filter(p => p.getGroup() === minGroup);
+
+                        if (highestPriorityPolys.length === 1) {
+                            // Single winner with lowest group index takes the space; lower-priority competitors are blocked
+                            const winner = highestPriorityPolys[0];
+                            for (let p of polys) {
+                                if (p !== winner && !pBlocked.get(p)) {
+                                    pBlocked.set(p, true);
+                                    anyNewlyBlocked = true;
+                                }
                             }
                         } else {
-                            targetMap.set(targetKey, p);
+                            // Tie in highest priority group: all competitors are blocked to prevent overlap
+                            for (let p of polys) {
+                                if (!pBlocked.get(p)) {
+                                    pBlocked.set(p, true);
+                                    anyNewlyBlocked = true;
+                                }
+                            }
                         }
                     }
                 }
