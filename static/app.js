@@ -2459,10 +2459,12 @@ async function loadExampleHandler() {
     }
     
     try {
-        // Fetch the example file from the Verification folder
-        // Encode the filename to handle spaces and special characters
+        // Fetch the example file from local examples folder, falling back to ../Verification/
         const encodedFilename = encodeURIComponent(filename);
-        const response = await fetch(`../Verification/${encodedFilename}`);
+        let response = await fetch(`examples/${encodedFilename}`);
+        if (!response.ok) {
+            response = await fetch(`../Verification/${encodedFilename}`);
+        }
         
         if (!response.ok) {
             throw new Error(`Failed to load example: ${response.statusText}`);
