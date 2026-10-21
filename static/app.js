@@ -394,14 +394,15 @@ function setupEventListeners() {
     });
     document.getElementById('palette-input').addEventListener('change', loadPalette);
     
-    // Canvas mouse events for panning
+    // Canvas mouse events for panning and tile actions
     canvas.addEventListener('mousedown', canvasMouseDown);
     canvas.addEventListener('mousemove', canvasMouseMove);
     canvas.addEventListener('mouseup', canvasMouseUp);
     canvas.addEventListener('mouseleave', canvasMouseUp);
     canvas.addEventListener('wheel', canvasWheel, { passive: false });
+    canvas.addEventListener('contextmenu', canvasContextMenu);
     canvas.addEventListener('auxclick', (e) => {
-        if (e.button === 1) e.preventDefault();
+        if (e.button === 1 || e.button === 2) e.preventDefault();
     });
 
     // Safari gesture events for pinch/expand on trackpad
@@ -1006,6 +1007,13 @@ function updateModeButtons() {
 function canvasMouseDown(e) {
     hasDragged = false;
 
+    // Right click (or two-finger click on trackpad): delete tile under cursor even in Add mode
+    if (e.button === 2) {
+        e.preventDefault();
+        deleteTileAtMouse(e);
+        return;
+    }
+
     // Spacebar held down or Middle-click (Inkscape style): pan canvas regardless of mode
     if (isSpacePressed || e.button === 1) {
         e.preventDefault();
@@ -1057,6 +1065,12 @@ function canvasMouseDown(e) {
 function canvasMouseMove(e) {
     // Track the last hovered grid cell so paste can place tiles under the cursor
     lastHoverGrid = getGridCoordinatesFromEvent(e, true);
+
+    // Right-button drag to delete tiles (even in Add mode)
+    if ((e.buttons & 2) === 2) {
+        deleteTileAtMouse(e);
+        return;
+    }
 
     if (e.buttons === 1 && assignGroupMode && !isSpacePressed) {
         assignGroupAtMouse(e);
@@ -1324,7 +1338,13 @@ function canvasTouchEnd(e) {
     }
 }
 
+function canvasContextMenu(e) {
+    e.preventDefault();
+    deleteTileAtMouse(e);
+}
+
 function canvasClickHandler(e) {
+    if (e.button === 2) return;
     if (hasDragged || isSpacePressed) return;
     if (selectMode) return;
 
@@ -1389,7 +1409,11 @@ function deleteTileAtMouse(e) {
     
     const tile = board.coordToTile[gridX][gridY];
     if (!tile) return;
+    saveStateToHistory();
     removeTileAtCoord(gridX, gridY);
+    if (selectedTiles.has(tileKey(gridX, gridY))) {
+        selectedTiles.delete(tileKey(gridX, gridY));
+    }
     
     drawBoard();
     updateInfo();
@@ -1397,6 +1421,7 @@ function deleteTileAtMouse(e) {
 }
 
 function getGridCoordinatesFromEvent(e, clampToBoard = false) {
+    if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -1496,6 +1521,7 @@ function captureSelectionRectangle(start, end) {
 }
 
 function getBoardCoordinatesFromEvent(e) {
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
