@@ -232,6 +232,11 @@ function setupEventListeners() {
                     toggleDeleteMode();
                 }
             }
+            // Ctrl+F: fill selected cells (including empty ones) with the current tile
+            if (e.key === 'f' || e.key === 'F') {
+                e.preventDefault();
+                fillSelectedCells();
+            }
             // Ctrl+Z for undo
             if (e.key === 'z' || e.key === 'Z') {
                 e.preventDefault();
@@ -277,7 +282,7 @@ function setupEventListeners() {
         });
     });
     
-    // Keyboard controls (WASD)
+    // Keyboard controls (arrow keys only — WASD removed to avoid conflicts with Ctrl shortcuts)
     document.addEventListener('keydown', handleKeyPress);
     
     // Undo button
@@ -1043,7 +1048,7 @@ function canvasMouseDown(e) {
     const start = getGridCoordinatesFromEvent(e, true);
     const boardPos = getBoardCoordinatesFromEvent(e);
 
-    // If clicking on an already selected tile, initiate dragging/moving the selection
+    // If clicking on any already-selected cell (tile or empty), initiate dragging/moving the selection
     if (start && selectedTiles.size > 0 && selectedTiles.has(tileKey(start.x, start.y))) {
         selectionMoveStart = start;
         selectionMoveOffset = { x: 0, y: 0 };
@@ -1112,9 +1117,11 @@ function canvasMouseMove(e) {
         const boxMinY = Math.min(selectionBoxStart.y, selectionBoxCurrent.y);
         const boxMaxY = Math.max(selectionBoxStart.y, selectionBoxCurrent.y);
 
-        selectedTiles = getTilesEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY);
+        selectedTiles = getCellsEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY);
         if (selectedTiles.size > 0) {
-            setSelectionStatus(`Selecting ${selectedTiles.size} tile(s)...`);
+            const tileCount = countSelectedTiles();
+            const emptyCount = selectedTiles.size - tileCount;
+            setSelectionStatus(`Selecting ${tileCount} tile(s), ${emptyCount} empty cell(s)...`);
         }
         drawBoard();
         return;
@@ -1186,12 +1193,20 @@ function canvasMouseUp(e) {
                 const boxMaxX = Math.max(boxStart.x, boxCur.x);
                 const boxMinY = Math.min(boxStart.y, boxCur.y);
                 const boxMaxY = Math.max(boxStart.y, boxCur.y);
-                selectedTiles = getTilesEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY);
+                selectedTiles = getCellsEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY);
             }
             if (selectedTiles.size > 0) {
-                setSelectionStatus(`Selected ${selectedTiles.size} tile(s). Press Ctrl+D to delete.`);
+                const tileCount = countSelectedTiles();
+                const emptyCount = selectedTiles.size - tileCount;
+                // Compute and store origin as top-left of the bounding box
+                const coords = Array.from(selectedTiles).map(parseTileKey);
+                selectionOrigin = {
+                    x: Math.min(...coords.map(c => c.x)),
+                    y: Math.min(...coords.map(c => c.y))
+                };
+                setSelectionStatus(`Selected ${tileCount} tile(s) + ${emptyCount} empty cell(s). Ctrl+D delete | Ctrl+F fill.`);
             } else {
-                setSelectionStatus('No tiles in selected area.');
+                setSelectionStatus('No cells in selected area.');
             }
         }
         canvas.style.cursor = 'default';
@@ -1531,6 +1546,7 @@ function getBoardCoordinatesFromEvent(e) {
     };
 }
 
+// Legacy: only tiles (used internally where needed)
 function getTilesEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY) {
     const enclosed = new Set();
     const minCol = Math.max(0, Math.floor(boxMinX / cellSize));
@@ -1545,8 +1561,6 @@ function getTilesEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY) {
                 const tileRight = (x + 1) * cellSize;
                 const tileTop = y * cellSize;
                 const tileBottom = (y + 1) * cellSize;
-
-                // Check intersection between tile and marquee rectangle
                 if (tileRight > boxMinX && tileLeft < boxMaxX &&
                     tileBottom > boxMinY && tileTop < boxMaxY) {
                     enclosed.add(tileKey(x, y));
@@ -1557,20 +1571,93 @@ function getTilesEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY) {
     return enclosed;
 }
 
+// Extended: selects ALL grid cells (tiles + empty) within the box
+function getCellsEnclosedInBox(boxMinX, boxMaxX, boxMinY, boxMaxY) {
+    const enclosed = new Set();
+    const minCol = Math.max(0, Math.floor(boxMinX / cellSize));
+    const maxCol = Math.min(board.Cols - 1, Math.floor(boxMaxX / cellSize));
+    const minRow = Math.max(0, Math.floor(boxMinY / cellSize));
+    const maxRow = Math.min(board.Rows - 1, Math.floor(boxMaxY / cellSize));
+
+    for (let x = minCol; x <= maxCol; x++) {
+        for (let y = minRow; y <= maxRow; y++) {
+            const tileLeft = x * cellSize;
+            const tileRight = (x + 1) * cellSize;
+            const tileTop = y * cellSize;
+            const tileBottom = (y + 1) * cellSize;
+            if (tileRight > boxMinX && tileLeft < boxMaxX &&
+                tileBottom > boxMinY && tileTop < boxMaxY) {
+                enclosed.add(tileKey(x, y));
+            }
+        }
+    }
+    return enclosed;
+}
+
+// Count how many selected cells actually contain tiles
+function countSelectedTiles() {
+    let count = 0;
+    for (const key of selectedTiles) {
+        const { x, y } = parseTileKey(key);
+        if (board.coordToTile[x] && board.coordToTile[x][y]) count++;
+    }
+    return count;
+}
+
 function deleteSelectedTiles() {
     if (selectedTiles.size === 0) return false;
     saveStateToHistory();
-    const coords = Array.from(selectedTiles).map(parseTileKey);
-    for (const { x, y } of coords) {
-        removeTileAtCoord(x, y);
+    let count = 0;
+    for (const key of selectedTiles) {
+        const { x, y } = parseTileKey(key);
+        if (board.coordToTile[x] && board.coordToTile[x][y]) {
+            removeTileAtCoord(x, y);
+            count++;
+        }
     }
-    const count = coords.length;
     clearSelection(false);
     drawBoard();
     updateInfo();
     renderControlGroupsUI();
-    setSelectionStatus(`Deleted ${count} selected tile(s).`);
+    setSelectionStatus(`Deleted ${count} tile(s).`);
     return true;
+}
+
+// Ctrl+F: fill all selected cells (empty ones) with the current tile settings from the editor
+function fillSelectedCells() {
+    if (selectedTiles.size === 0) {
+        setSelectionStatus('Nothing selected. Drag a box over cells first, then press Ctrl+F.');
+        return;
+    }
+
+    // Read current tile settings from the editor panel (same as addTileAtMouse)
+    const name = document.getElementById('tile-name')?.value || '';
+    const color = document.getElementById('tile-color')?.value || '#4a9eff';
+    const isConcrete = document.getElementById('tile-concrete')?.checked || false;
+    const groupElem = document.getElementById('tile-group');
+    const group = groupElem ? parseInt(groupElem.value) || 0 : 0;
+    const glues = [
+        document.getElementById('glue-n')?.value || ' ',
+        document.getElementById('glue-e')?.value || ' ',
+        document.getElementById('glue-s')?.value || ' ',
+        document.getElementById('glue-w')?.value || ' '
+    ];
+
+    const tileData = { name, color, isConcrete, group, glues };
+
+    saveStateToHistory();
+    let filled = 0;
+    for (const key of selectedTiles) {
+        const { x, y } = parseTileKey(key);
+        if (x < 0 || x >= board.Cols || y < 0 || y >= board.Rows) continue;
+        if (board.coordToTile[x] && board.coordToTile[x][y]) continue; // skip occupied cells
+        placeTileAt(tileData, x, y);
+        filled++;
+    }
+    drawBoard();
+    updateInfo();
+    renderControlGroupsUI();
+    setSelectionStatus(`Filled ${filled} empty cell(s).`);
 }
 
 function copySelectionHandler() {
@@ -1695,67 +1782,90 @@ function removeTileAtCoord(x, y) {
 }
 
 function moveSelectionByOffset(offsetX, offsetY) {
-    if (offsetX === 0 && offsetY === 0) {
-        alert('Move offset cannot be (0, 0).');
-        return;
-    }
-    
-    const sourceCoords = Array.from(selectedTiles).map(parseTileKey);
+    if (offsetX === 0 && offsetY === 0) return;
+
+    // Collect only the tiles that actually exist in the selection
     const movingTiles = [];
-    for (const { x, y } of sourceCoords) {
-        const tile = board.coordToTile[x][y];
+    for (const key of selectedTiles) {
+        const { x, y } = parseTileKey(key);
+        const tile = board.coordToTile[x] && board.coordToTile[x][y];
         if (!tile) continue;
         movingTiles.push({
             sourceX: x,
             sourceY: y,
-            dx: x - (selectionOrigin ? selectionOrigin.x : 0),
-            dy: y - (selectionOrigin ? selectionOrigin.y : 0),
+            targetX: x + offsetX,
+            targetY: y + offsetY,
             color: tile.color,
             glues: [...tile.glues],
             name: tile.name || '',
-            isConcrete: tile.isConcrete === true
+            isConcrete: tile.isConcrete === true,
+            group: tile.group !== undefined ? tile.group : 0
         });
     }
-    
+
     if (movingTiles.length === 0) {
-        alert('Selected tiles are no longer available.');
-        clearSelection();
+        // Selection has only empty cells — just shift the selection set
+        const newSelection = new Set();
+        for (const key of selectedTiles) {
+            const { x, y } = parseTileKey(key);
+            const nx = x + offsetX;
+            const ny = y + offsetY;
+            if (nx >= 0 && nx < board.Cols && ny >= 0 && ny < board.Rows) {
+                newSelection.add(tileKey(nx, ny));
+            }
+        }
+        selectedTiles = newSelection;
+        if (selectionOrigin) {
+            selectionOrigin = { x: selectionOrigin.x + offsetX, y: selectionOrigin.y + offsetY };
+        }
+        setSelectionStatus(`Moved selection.`);
+        drawBoard();
         return;
     }
-    
-    const sourceSet = new Set(sourceCoords.map(c => tileKey(c.x, c.y)));
-    const base = selectionOrigin || {
-        x: Math.min(...sourceCoords.map(c => c.x)),
-        y: Math.min(...sourceCoords.map(c => c.y))
-    };
-    
-    const movedTemplate = movingTiles.map(tile => ({
-        ...tile,
-        dx: tile.dx + offsetX,
-        dy: tile.dy + offsetY
-    }));
-    
-    const placementError = validatePlacement(base.x, base.y, movedTemplate, sourceSet);
-    if (placementError) {
-        alert(`Cannot move selection: ${placementError}`);
-        return;
+
+    // Validate: all target positions must be in bounds and unoccupied (unless also being vacated)
+    const sourceSet = new Set(movingTiles.map(t => tileKey(t.sourceX, t.sourceY)));
+    for (const t of movingTiles) {
+        if (t.targetX < 0 || t.targetX >= board.Cols || t.targetY < 0 || t.targetY >= board.Rows) {
+            alert(`Cannot move: tile would land outside board bounds.`);
+            return;
+        }
+        const occupied = board.coordToTile[t.targetX] && board.coordToTile[t.targetX][t.targetY];
+        if (occupied && !sourceSet.has(tileKey(t.targetX, t.targetY))) {
+            alert(`Cannot move: a tile is already at (${t.targetX}, ${t.targetY}).`);
+            return;
+        }
     }
-    
+
     saveStateToHistory();
-    for (const tileData of movingTiles) {
-        removeTileAtCoord(tileData.sourceX, tileData.sourceY);
+
+    // Remove from source positions
+    for (const t of movingTiles) {
+        removeTileAtCoord(t.sourceX, t.sourceY);
     }
-    
+
+    // Place at target positions and build new selection
     const newSelection = new Set();
-    for (const tileData of movedTemplate) {
-        const x = base.x + tileData.dx;
-        const y = base.y + tileData.dy;
-        placeTileAt(tileData, x, y);
-        newSelection.add(tileKey(x, y));
+    for (const t of movingTiles) {
+        placeTileAt(t, t.targetX, t.targetY);
+        newSelection.add(tileKey(t.targetX, t.targetY));
     }
-    
+
+    // Also shift any empty-cell entries in the selection
+    for (const key of selectedTiles) {
+        if (newSelection.has(key)) continue; // already handled above
+        const { x, y } = parseTileKey(key);
+        const nx = x + offsetX;
+        const ny = y + offsetY;
+        if (nx >= 0 && nx < board.Cols && ny >= 0 && ny < board.Rows) {
+            newSelection.add(tileKey(nx, ny));
+        }
+    }
+
     selectedTiles = newSelection;
-    selectionOrigin = { x: base.x + offsetX, y: base.y + offsetY };
+    if (selectionOrigin) {
+        selectionOrigin = { x: selectionOrigin.x + offsetX, y: selectionOrigin.y + offsetY };
+    }
     setSelectionStatus(`Moved ${movingTiles.length} tile(s).`);
     drawBoard();
     updateInfo();
@@ -1766,31 +1876,30 @@ function handleKeyPress(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         return;
     }
+    // Ignore if a Ctrl/Meta modifier is held (those shortcuts are handled above)
+    if (e.ctrlKey || e.metaKey) return;
     
     const key = e.key.toLowerCase();
     let direction = null;
     
+    // Arrow keys only — WASD removed to avoid conflicts with Ctrl+A/D shortcuts
     switch(key) {
-        case 'w':
         case 'arrowup':
             direction = 'N';
             break;
-        case 'a':
         case 'arrowleft':
             direction = 'W';
             break;
-        case 's':
         case 'arrowdown':
             direction = 'S';
             break;
-        case 'd':
         case 'arrowright':
             direction = 'E';
             break;
     }
     
     if (direction) {
-        e.preventDefault(); // Prevent scrolling with WASD and arrow keys
+        e.preventDefault(); // Prevent scrolling with arrow keys
         if (currentMode === 'control-groups') {
             tumbleControlGroupsWithBase(direction);
         } else {
@@ -2089,29 +2198,40 @@ function drawBoardImmediate() {
         for (const key of selectedTiles) {
             const { x, y } = parseTileKey(key);
             if (x < 0 || x >= board.Cols || y < 0 || y >= board.Rows) continue;
-            if (!board.coordToTile[x][y]) continue;
+            const hasTile = board.coordToTile[x] && board.coordToTile[x][y];
             let drawX = x;
             let drawY = y;
             let isInvalidPreview = false;
-            if (hasPreviewOffset) {
+            if (hasPreviewOffset && hasTile) {
                 drawX = x + selectionMoveOffset.x;
                 drawY = y + selectionMoveOffset.y;
                 if (drawX < 0 || drawX >= board.Cols || drawY < 0 || drawY >= board.Rows) {
                     isInvalidPreview = true;
                 } else {
-                    const occupied = board.coordToTile[drawX][drawY];
+                    const occupied = board.coordToTile[drawX] && board.coordToTile[drawX][drawY];
                     if (occupied && !selectedTiles.has(tileKey(drawX, drawY))) {
                         isInvalidPreview = true;
                     }
                 }
             }
             if (drawX < 0 || drawX >= board.Cols || drawY < 0 || drawY >= board.Rows) continue;
-            ctx.strokeStyle = isInvalidPreview ? '#dc2626' : '#f59e0b';
-            ctx.fillStyle = isInvalidPreview ? 'rgba(220, 38, 38, 0.25)' : 'rgba(245, 158, 11, 0.25)';
             const tileX = drawX * cellSize;
             const tileY = drawY * cellSize;
-            ctx.fillRect(tileX + 1, tileY + 1, cellSize - 2, cellSize - 2);
-            ctx.strokeRect(tileX + 1, tileY + 1, cellSize - 2, cellSize - 2);
+            if (hasTile) {
+                // Tile cell — amber highlight (or red if move preview is invalid)
+                ctx.strokeStyle = isInvalidPreview ? '#dc2626' : '#f59e0b';
+                ctx.fillStyle = isInvalidPreview ? 'rgba(220, 38, 38, 0.25)' : 'rgba(245, 158, 11, 0.25)';
+                ctx.fillRect(tileX + 1, tileY + 1, cellSize - 2, cellSize - 2);
+                ctx.strokeRect(tileX + 1, tileY + 1, cellSize - 2, cellSize - 2);
+            } else {
+                // Empty cell — dashed blue highlight to indicate it can be filled with Ctrl+F
+                ctx.strokeStyle = 'rgba(99, 179, 237, 0.85)';
+                ctx.fillStyle = 'rgba(99, 179, 237, 0.12)';
+                ctx.setLineDash([Math.max(3 / zoom, 1), Math.max(3 / zoom, 1)]);
+                ctx.fillRect(tileX + 1, tileY + 1, cellSize - 2, cellSize - 2);
+                ctx.strokeRect(tileX + 1, tileY + 1, cellSize - 2, cellSize - 2);
+                ctx.setLineDash([]);
+            }
         }
         ctx.restore();
     }
