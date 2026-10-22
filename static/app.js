@@ -471,6 +471,8 @@ function setupModeSelector() {
         updateModeView();
         drawBoard();
     });
+    // Apply the initial mode on page load so the UI matches without user interaction
+    updateModeView();
 }
 
 function updateModeView() {
