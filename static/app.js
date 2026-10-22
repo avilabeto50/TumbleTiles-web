@@ -17,7 +17,7 @@ let undoHistory = [];
 const MAX_UNDO_HISTORY = 50;
 
 // Mode & Control Groups state
-let currentMode = 'full-tilt'; // 'full-tilt' | 'control-groups' | 'single-step'
+let currentMode = 'control-groups'; // 'full-tilt' | 'control-groups' | 'single-step'
 let controlGroups = [0, 1]; // Active group indices (0-indexed: Group 1 = 0, Group 2 = 1)
 const GROUP_COLORS = [
     '#3b82f6', // Group 1: Blue
