@@ -7,6 +7,7 @@ let scriptRunning = false;
 let scriptInterval = null;
 let showLabels = true;
 let showGlues = true;
+let showGroupDots = true;
 let gluesActivated = true;
 let gluesDuringMotion = true;
 let quickAddMode = false;
@@ -166,6 +167,10 @@ function setupEventListeners() {
     });
     document.getElementById('show-glues').addEventListener('change', (e) => {
         showGlues = e.target.checked;
+        drawBoard();
+    });
+    document.getElementById('show-group-dots').addEventListener('change', (e) => {
+        showGroupDots = e.target.checked;
         drawBoard();
     });
     document.getElementById('performance-mode').addEventListener('change', (e) => {
@@ -2297,7 +2302,7 @@ function drawTile(tile, useHighDetail = true, c = ctx, scale = zoom) {
     c.strokeRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
 
     // Draw control group indicator dot
-    if (currentMode === 'control-groups' || (tile.group !== undefined && tile.group > 0)) {
+    if (showGroupDots && (currentMode === 'control-groups' || (tile.group !== undefined && tile.group > 0))) {
         const grp = (tile.group !== undefined && tile.group !== null) ? tile.group : 0;
         const dotRadius = Math.max(3, 4.5 / scale);
         const dotX = x + 3 + dotRadius;
