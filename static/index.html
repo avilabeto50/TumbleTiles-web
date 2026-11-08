@@ -22,8 +22,15 @@
                 <div class="mode-selector-wrapper">
                     <label for="mode-selector" class="mode-label">Mode</label>
                     <select id="mode-selector" class="mode-select">
-                        <option value="full-tilt">Full Tilt</option>
-                        <option value="control-groups" selected>Control Groups</option>
+                        <optgroup label="Standard Models">
+                            <option value="full-tilt">Full Tilt</option>
+                            <option value="control-groups" selected>Control Groups</option>
+                        </optgroup>
+                        <optgroup label="Physics Models">
+                            <option value="group-merge">Group Merge</option>
+                            <option value="heavy-tile">Heavy Tile</option>
+                            <option value="merge-tile">Same-Name Merge</option>
+                        </optgroup>
                         <option value="single-step" disabled>Single Step (Coming Soon)</option>
                     </select>
                 </div>
@@ -96,6 +103,10 @@
                                     <option value="">-- Select Example --</option>
                                     <option value="toggle-lock.xml">Toggle Lock</option>
                                     <option value="turnstyle.xml">Turnstyle</option>
+                                    <option value="singleton-factory.xml">Singleton Factory</option>
+                                    <option value="domino-factory.xml">Domino Factory</option>
+                                    <option value="CG-TuringMachine.xml">CG Turing Machine</option>
+                                    <option value="x-monotone-replicator.xml">X-Monotone Replicator</option>
                                 </select>
                             </div>
                             <button id="load-example" class="btn btn-primary">Load Example</button>
@@ -165,6 +176,8 @@
                                     Auto-enabled for 1000+ tiles. Disables labels, glues, and grid for high-speed rendering.
                                 </p>
                             </div>
+
+
                         </div>
                     </section>
 
@@ -389,6 +402,23 @@
                             <div class="form-group">
                                 <label for="tile-name">Label / Name (optional):</label>
                                 <input type="text" id="tile-name" class="form-control" placeholder="e.g. A, core, stem">
+                            </div>
+
+                            <!-- Heavy Tile Settings Container (contextual for Heavy Tile mode) -->
+                            <div id="tile-heavy-container" style="display: none; margin-bottom: 12px; padding: 10px; background: var(--bg-hover, #f8fafc); border-radius: 6px; border: 1px solid var(--border, #cbd5e1);">
+                                <div class="grid-2col">
+                                    <div class="form-group">
+                                        <label for="tile-weight">Weight (Step Limit):</label>
+                                        <input type="number" id="tile-weight" class="form-control" value="4" min="1" max="50">
+                                    </div>
+                                    <div class="form-group checkbox-group" style="padding-top: 26px;">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="tile-heavy">
+                                            <span>Heavy Tile</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <p class="help-text" style="margin-top: 4px;">Heavy tiles stop after moving <em>weight</em> steps per tilt.</p>
                             </div>
 
                             <div class="glues-group">
