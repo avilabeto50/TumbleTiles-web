@@ -2303,8 +2303,8 @@ function drawTile(tile, useHighDetail = true, c = ctx, scale = zoom) {
     c.lineWidth = 2 / scale; // Adjust line width for zoom
     c.strokeRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
 
-    // Draw control group indicator dot
-    if (showGroupDots && (currentMode === 'control-groups' || (tile.group !== undefined && tile.group > 0))) {
+    // Draw control group indicator dot (never on concrete tiles)
+    if (!tile.isConcrete && showGroupDots && (currentMode === 'control-groups' || (tile.group !== undefined && tile.group > 0))) {
         const grp = (tile.group !== undefined && tile.group !== null) ? tile.group : 0;
         const dotRadius = Math.max(3, 4.5 / scale);
         const dotX = x + 3 + dotRadius;
