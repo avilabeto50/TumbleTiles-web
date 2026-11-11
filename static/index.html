@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TumbleTiles</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="app-layout">
         <!-- Top Navigation Bar -->
@@ -18,20 +22,19 @@
                     <span class="brand-icon">🧊</span>
                     <span class="brand-name">TumbleTiles</span>
                 </div>
-                
+
                 <div class="mode-selector-wrapper">
                     <label for="mode-selector" class="mode-label">Mode</label>
                     <select id="mode-selector" class="mode-select">
                         <optgroup label="Standard Models">
                             <option value="full-tilt">Full Tilt</option>
                             <option value="control-groups" selected>Control Groups</option>
-                        </optgroup>
-                        <optgroup label="Physics Models">
                             <option value="group-merge">Group Merge</option>
-                            <option value="heavy-tile">Heavy Tile</option>
-                            <option value="merge-tile">Same-Name Merge</option>
                         </optgroup>
-                        <option value="single-step" disabled>Single Step (Coming Soon)</option>
+                        <optgroup label="Coming Soon">
+                            <option value="heavy-tile" disabled>Heavy Tile</option>
+                            <option value="single-step" disabled>Single Step</option>
+                        </optgroup>
                     </select>
                 </div>
             </div>
@@ -93,7 +96,8 @@
                                 <ol class="callout-list">
                                     <li>Select an example from the dropdown below.</li>
                                     <li>Click <strong>Load Example</strong>.</li>
-                                    <li>Use arrow buttons or <strong>W A S D</strong> keys to tilt the board and self-assemble.</li>
+                                    <li>Use arrow buttons or <strong>W A S D</strong> keys to tilt the board and
+                                        self-assemble.</li>
                                 </ol>
                             </div>
 
@@ -127,11 +131,13 @@
                             <div class="grid-2col">
                                 <div class="form-group">
                                     <label for="board-width">Width:</label>
-                                    <input type="number" id="board-width" class="form-control" value="15" min="5" max="1000">
+                                    <input type="number" id="board-width" class="form-control" value="15" min="5"
+                                        max="1000">
                                 </div>
                                 <div class="form-group">
                                     <label for="board-height">Height:</label>
-                                    <input type="number" id="board-height" class="form-control" value="15" min="5" max="1000">
+                                    <input type="number" id="board-height" class="form-control" value="15" min="5"
+                                        max="1000">
                                 </div>
                             </div>
                             <div class="button-row">
@@ -165,7 +171,8 @@
                                     <input type="checkbox" id="factory-mode" checked>
                                     <span>Enable Factory Mode</span>
                                 </label>
-                                <p class="help-text">Tiles that hit the outer borders will be removed from the board.</p>
+                                <p class="help-text">Tiles that hit the outer borders will be removed from the board.
+                                </p>
                             </div>
                             <div class="form-group checkbox-group">
                                 <label class="checkbox-label">
@@ -173,7 +180,8 @@
                                     <span>Performance Mode</span>
                                 </label>
                                 <p class="help-text">
-                                    Auto-enabled for 1000+ tiles. Disables labels, glues, and grid for high-speed rendering.
+                                    Auto-enabled for 1000+ tiles. Disables labels, glues, and grid for high-speed
+                                    rendering.
                                 </p>
                             </div>
 
@@ -232,13 +240,15 @@
 
                                 <div class="form-group">
                                     <label for="script-input">Tilt Sequence (N, E, S, W):</label>
-                                    <textarea id="script-input" class="form-control mono-field" placeholder="e.g. NNESSW" rows="2"></textarea>
+                                    <textarea id="script-input" class="form-control mono-field"
+                                        placeholder="e.g. NNESSW" rows="2"></textarea>
                                 </div>
 
                                 <div class="grid-2col">
                                     <div class="form-group">
                                         <label for="script-delay">Delay (ms):</label>
-                                        <input type="number" id="script-delay" class="form-control" value="500" min="0" max="5000" step="50">
+                                        <input type="number" id="script-delay" class="form-control" value="500" min="0"
+                                            max="5000" step="50">
                                     </div>
                                     <div class="form-group checkbox-group" style="padding-top: 26px;">
                                         <label class="checkbox-label">
@@ -274,8 +284,10 @@
                             <div class="card">
                                 <h3 class="card-title">Movement Mode</h3>
                                 <div class="submode-pill-selector">
-                                    <button type="button" class="submode-pill active" data-submode="mirror">Mirror Mode</button>
-                                    <button type="button" class="submode-pill" data-submode="sequences">Custom Sequences</button>
+                                    <button type="button" class="submode-pill active" data-submode="mirror">Mirror
+                                        Mode</button>
+                                    <button type="button" class="submode-pill" data-submode="sequences">Custom
+                                        Sequences</button>
                                 </div>
 
                                 <!-- Submode: Mirror -->
@@ -295,12 +307,16 @@
                                     </div>
 
                                     <div class="direction-pad">
-                                        <button class="dir-btn cg-dir-btn dir-n" data-base-dir="N" title="Move Base North">↑</button>
+                                        <button class="dir-btn cg-dir-btn dir-n" data-base-dir="N"
+                                            title="Move Base North">↑</button>
                                         <div class="dir-horizontal-row">
-                                            <button class="dir-btn cg-dir-btn dir-w" data-base-dir="W" title="Move Base West">←</button>
-                                            <button class="dir-btn cg-dir-btn dir-e" data-base-dir="E" title="Move Base East">→</button>
+                                            <button class="dir-btn cg-dir-btn dir-w" data-base-dir="W"
+                                                title="Move Base West">←</button>
+                                            <button class="dir-btn cg-dir-btn dir-e" data-base-dir="E"
+                                                title="Move Base East">→</button>
                                         </div>
-                                        <button class="dir-btn cg-dir-btn dir-s" data-base-dir="S" title="Move Base South">↓</button>
+                                        <button class="dir-btn cg-dir-btn dir-s" data-base-dir="S"
+                                            title="Move Base South">↓</button>
                                     </div>
 
                                     <div id="cg-mirror-legend" class="cg-mirror-legend">
@@ -311,7 +327,8 @@
                                 <!-- Submode: Custom Sequences -->
                                 <div id="cg-sequences-section" class="cg-submode-content" style="display: none;">
                                     <p class="help-text" style="margin-bottom: 10px;">
-                                        Enter a sequence of moves (N, E, S, W) for each group. They run in lockstep simultaneously.
+                                        Enter a sequence of moves (N, E, S, W) for each group. They run in lockstep
+                                        simultaneously.
                                     </p>
                                     <div id="cg-sequences-inputs" class="cg-sequences-inputs">
                                         <!-- Inputs for each group rendered dynamically -->
@@ -320,7 +337,8 @@
                                     <div class="grid-2col" style="margin-top: 10px;">
                                         <div class="form-group">
                                             <label for="cg-script-delay">Delay (ms):</label>
-                                            <input type="number" id="cg-script-delay" class="form-control" value="500" min="0" max="5000" step="50">
+                                            <input type="number" id="cg-script-delay" class="form-control" value="500"
+                                                min="0" max="5000" step="50">
                                         </div>
                                         <div class="form-group checkbox-group" style="padding-top: 26px;">
                                             <label class="checkbox-label">
@@ -362,8 +380,10 @@
 
                             <div id="palette-actions" class="palette-actions-panel" style="display: none;">
                                 <div class="button-row">
-                                    <button id="modify-tile-type" class="btn btn-success-outline btn-sm">Modify Selected</button>
-                                    <button id="delete-tile-type" class="btn btn-danger-outline btn-sm">Delete Selected</button>
+                                    <button id="modify-tile-type" class="btn btn-success-outline btn-sm">Modify
+                                        Selected</button>
+                                    <button id="delete-tile-type" class="btn btn-danger-outline btn-sm">Delete
+                                        Selected</button>
                                 </div>
                                 <div class="checkbox-group" style="margin-top: 6px;">
                                     <label class="checkbox-label">
@@ -374,7 +394,8 @@
                             </div>
 
                             <div class="palette-file-buttons" style="margin-top: 10px;">
-                                <button id="save-tile-type" class="btn btn-secondary btn-sm">Save Current as Type</button>
+                                <button id="save-tile-type" class="btn btn-secondary btn-sm">Save Current as
+                                    Type</button>
                                 <div class="button-row" style="margin-top: 6px;">
                                     <button id="save-palette" class="btn btn-secondary btn-sm">Export Palette</button>
                                     <button id="load-palette" class="btn btn-secondary btn-sm">Import Palette</button>
@@ -405,11 +426,13 @@
                             </div>
 
                             <!-- Heavy Tile Settings Container (contextual for Heavy Tile mode) -->
-                            <div id="tile-heavy-container" style="display: none; margin-bottom: 12px; padding: 10px; background: var(--bg-hover, #f8fafc); border-radius: 6px; border: 1px solid var(--border, #cbd5e1);">
+                            <div id="tile-heavy-container"
+                                style="display: none; margin-bottom: 12px; padding: 10px; background: var(--bg-hover, #f8fafc); border-radius: 6px; border: 1px solid var(--border, #cbd5e1);">
                                 <div class="grid-2col">
                                     <div class="form-group">
                                         <label for="tile-weight">Weight (Step Limit):</label>
-                                        <input type="number" id="tile-weight" class="form-control" value="4" min="1" max="50">
+                                        <input type="number" id="tile-weight" class="form-control" value="4" min="1"
+                                            max="50">
                                     </div>
                                     <div class="form-group checkbox-group" style="padding-top: 26px;">
                                         <label class="checkbox-label">
@@ -418,7 +441,9 @@
                                         </label>
                                     </div>
                                 </div>
-                                <p class="help-text" style="margin-top: 4px;">Heavy tiles stop after moving <em>weight</em> steps per tilt.</p>
+                                <p class="help-text" style="margin-top: 4px;">Heavy tiles stop after moving
+                                    <em>weight</em> steps per tilt.
+                                </p>
                             </div>
 
                             <div class="glues-group">
@@ -426,19 +451,23 @@
                                 <div class="glue-inputs-grid">
                                     <div class="glue-cell glue-top">
                                         <span class="glue-tag">N</span>
-                                        <input type="text" id="glue-n" class="form-control glue-field" placeholder="None">
+                                        <input type="text" id="glue-n" class="form-control glue-field"
+                                            placeholder="None">
                                     </div>
                                     <div class="glue-cell glue-left">
                                         <span class="glue-tag">W</span>
-                                        <input type="text" id="glue-w" class="form-control glue-field" placeholder="None">
+                                        <input type="text" id="glue-w" class="form-control glue-field"
+                                            placeholder="None">
                                     </div>
                                     <div class="glue-cell glue-right">
                                         <span class="glue-tag">E</span>
-                                        <input type="text" id="glue-e" class="form-control glue-field" placeholder="None">
+                                        <input type="text" id="glue-e" class="form-control glue-field"
+                                            placeholder="None">
                                     </div>
                                     <div class="glue-cell glue-bottom">
                                         <span class="glue-tag">S</span>
-                                        <input type="text" id="glue-s" class="form-control glue-field" placeholder="None">
+                                        <input type="text" id="glue-s" class="form-control glue-field"
+                                            placeholder="None">
                                     </div>
                                 </div>
                             </div>
@@ -454,15 +483,19 @@
                         <div class="card">
                             <h3 class="card-title">Placement & Edit Modes</h3>
                             <div class="button-col">
-                                <button id="toggle-add-mode" class="mode-btn btn btn-secondary">Add Mode (Ctrl+A)</button>
-                                <button id="toggle-delete-mode" class="mode-btn btn btn-secondary">Delete Mode (Ctrl+D)</button>
-                                <button id="toggle-assign-group-mode" class="mode-btn btn btn-secondary" style="display: none;">
+                                <button id="toggle-add-mode" class="mode-btn btn btn-secondary">Add Mode
+                                    (Ctrl+A)</button>
+                                <button id="toggle-delete-mode" class="mode-btn btn btn-secondary">Delete Mode
+                                    (Ctrl+D)</button>
+                                <button id="toggle-assign-group-mode" class="mode-btn btn btn-secondary"
+                                    style="display: none;">
                                     Assign Group Mode (Click Board)
                                 </button>
                             </div>
                             <p class="help-text" style="margin-top: 8px;">
                                 • Click or drag on the board to add/delete tiles.<br>
-                                • <strong>Right-click</strong> (or two-finger tap/click on trackpad) any tile to delete it instantly (even in Add mode).
+                                • <strong>Right-click</strong> (or two-finger tap/click on trackpad) any tile to delete
+                                it instantly (even in Add mode).
                             </p>
                         </div>
                     </section>
@@ -472,7 +505,8 @@
                         <div class="card">
                             <h3 class="card-title">Selection Tools</h3>
                             <div class="button-row">
-                                <button id="delete-selection" class="btn btn-danger btn-sm">Delete Selection (Ctrl+D)</button>
+                                <button id="delete-selection" class="btn btn-danger btn-sm">Delete Selection
+                                    (Ctrl+D)</button>
                                 <button id="clear-selection" class="btn btn-secondary btn-sm">Deselect All</button>
                             </div>
                             <div class="button-row" style="margin-top: 8px;">
@@ -480,7 +514,8 @@
                                 <button id="paste-selection" class="btn btn-secondary btn-sm">Paste (Ctrl+V)</button>
                             </div>
                             <button id="toggle-select-mode" style="display: none;">Enable Select Mode</button>
-                            <p id="selection-status" class="help-text" style="margin-top: 8px;">Click & drag on canvas to box-select tiles. Press Ctrl+D or Delete to remove.</p>
+                            <p id="selection-status" class="help-text" style="margin-top: 8px;">Click & drag on canvas
+                                to box-select tiles. Press Ctrl+D or Delete to remove.</p>
                         </div>
 
                         <div class="card">
@@ -495,8 +530,10 @@
                             </div>
                             <p class="help-text" style="margin-top: 8px;">
                                 • <strong>Trackpad:</strong> Two-finger glide to pan, pinch & expand to zoom.<br>
-                                • <strong>Mouse:</strong> Click & drag or hold Space+drag to pan; Ctrl+wheel to zoom.<br>
-                                • <strong>Inkscape keys:</strong> Middle-click drag to pan; Shift+wheel for horizontal scroll.
+                                • <strong>Mouse:</strong> Click & drag or hold Space+drag to pan; Ctrl+wheel to
+                                zoom.<br>
+                                • <strong>Inkscape keys:</strong> Middle-click drag to pan; Shift+wheel for horizontal
+                                scroll.
                             </p>
                         </div>
 
@@ -520,15 +557,18 @@
                         <div class="card">
                             <h3 class="card-title">About TumbleTiles</h3>
                             <p class="info-paragraph">
-                                TumbleTiles is an active self-assembly and tile automatas simulator developed for nanoscale and algorithmic self-assembly research.
+                                TumbleTiles is an active self-assembly and tile automatas simulator developed for
+                                nanoscale and algorithmic self-assembly research.
                             </p>
-                            
+
                             <div class="info-links-list">
-                                <a href="https://asarg.hackresearch.com/main/" target="_blank" rel="noopener noreferrer" class="info-link-item">
+                                <a href="https://asarg.hackresearch.com/main/" target="_blank" rel="noopener noreferrer"
+                                    class="info-link-item">
                                     <span class="link-title">Research Group Homepage</span>
                                     <span class="link-arrow">→</span>
                                 </a>
-                                <a href="https://github.com/asarg/TumbleTiles" target="_blank" rel="noopener noreferrer" class="info-link-item">
+                                <a href="https://github.com/asarg/TumbleTiles" target="_blank" rel="noopener noreferrer"
+                                    class="info-link-item">
                                     <span class="link-title">GitHub Repository</span>
                                     <span class="link-arrow">→</span>
                                 </a>
@@ -554,4 +594,5 @@
     <script src="tumbletiles.js"></script>
     <script src="app.js"></script>
 </body>
+
 </html>

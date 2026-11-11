@@ -2665,6 +2665,10 @@ function saveFileHandler() {
         xmlText += `      <Concrete>${concreteValue ? 'True' : 'False'}</Concrete>\n`;
         xmlText += `      <Group>${tile.group !== undefined ? tile.group : 0}</Group>\n`;
         xmlText += `      <Label>${escapeXml(tileName)}</Label>\n`;
+        if (tile.isHeavy) {
+            xmlText += `      <Heavy>True</Heavy>\n`;
+            xmlText += `      <Weight>${tile.weight || 4}</Weight>\n`;
+        }
         xmlText += `    </Tile>\n`;
     };
     
@@ -2962,12 +2966,18 @@ function saveTileType() {
         document.getElementById('glue-w').value || ' '
     ];
     
+    const isHeavy = document.getElementById('tile-heavy')?.checked || false;
+    const weightVal = parseInt(document.getElementById('tile-weight')?.value);
+    const weight = (!isNaN(weightVal) && weightVal >= 1) ? weightVal : 4;
+
     const tileType = {
         name: name,
         color: color,
         isConcrete: isConcrete,
         glues: glues,
-        group: group
+        group: group,
+        isHeavy: isHeavy,
+        weight: weight
     };
     
     tilePalette.push(tileType);
@@ -3176,6 +3186,15 @@ function loadTileTypeToInputs(tileType) {
     const groupElem = document.getElementById('tile-group');
     if (groupElem && tileType.group !== undefined) {
         groupElem.value = tileType.group;
+    }
+
+    const heavyElem = document.getElementById('tile-heavy');
+    if (heavyElem) {
+        heavyElem.checked = tileType.isHeavy === true;
+    }
+    const weightElem = document.getElementById('tile-weight');
+    if (weightElem && tileType.weight !== undefined) {
+        weightElem.value = tileType.weight;
     }
     
     console.log('Loaded tile type from palette:', tileType);

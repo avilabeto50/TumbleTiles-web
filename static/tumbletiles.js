@@ -15,7 +15,7 @@ function getNextUID() {
 
 // Tile class
 class Tile {
-    constructor(parent, id, x, y, glues, color, isConcrete, group = 0) {
+    constructor(parent, id, x, y, glues, color, isConcrete, group = 0, isHeavy = false, weight = 4) {
         this.parent = parent;
         this.id = id;
         this.symbol = id;
@@ -25,6 +25,8 @@ class Tile {
         this.uid = getNextUID();
         this.name = "";
         this.group = (group !== undefined && group !== null) ? parseInt(group) : 0;
+        this.isHeavy = isHeavy === true || isHeavy === "True";
+        this.weight = (weight !== undefined && !Number.isNaN(parseInt(weight))) ? parseInt(weight) : 4;
         
         if (isConcrete === true || isConcrete === "True") {
             this.isConcrete = true;
@@ -38,10 +40,10 @@ class Tile {
 
 // Polyomino class
 class Polyomino {
-    constructor(pId, x, y, glues, color) {
+    constructor(pId, x, y, glues, color, isHeavy = false, weight = 4) {
         this.id = pId;
         if (x !== undefined && y !== undefined) {
-            const newTile = new Tile(this, pId, x, y, glues, color, false);
+            const newTile = new Tile(this, pId, x, y, glues, color, false, 0, isHeavy, weight);
             this.Tiles = [newTile];
             this.NumTiles = 1;
         } else {
@@ -259,17 +261,239 @@ class Board {
         }
     }
     
+    _removeTile(tile) {
+        if (!tile || tile.isConcrete) return;
+
+        if (this.coordToTile[tile.x] && this.coordToTile[tile.x][tile.y] === tile) {
+            this.coordToTile[tile.x][tile.y] = null;
+        }
+
+        const parent = tile.parent;
+        if (!parent) return;
+
+        const idx = parent.Tiles.indexOf(tile);
+        if (idx > -1) parent.Tiles.splice(idx, 1);
+
+        if (parent.Tiles.length === 0) {
+            const pi = this.Polyominoes.indexOf(parent);
+            if (pi > -1) this.Polyominoes.splice(pi, 1);
+        } else {
+            this._splitDisconnected(parent);
+        }
+    }
+
+    _splitDisconnected(poly) {
+        if (poly.Tiles.length <= 1) return;
+
+        const unvisited = new Set(poly.Tiles);
+        const components = [];
+
+        while (unvisited.size > 0) {
+            const start = unvisited.values().next().value;
+            const component = [];
+            const queue = [start];
+            unvisited.delete(start);
+
+            while (queue.length > 0) {
+                const cur = queue.shift();
+                component.push(cur);
+                for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+                    const nx = cur.x + dx, ny = cur.y + dy;
+                    if (nx < 0 || nx >= this.Cols || ny < 0 || ny >= this.Rows) continue;
+                    const nb = this.coordToTile[nx]?.[ny];
+                    if (nb && nb.parent === poly && unvisited.has(nb)) {
+                        unvisited.delete(nb);
+                        queue.push(nb);
+                    }
+                }
+            }
+            components.push(component);
+        }
+
+        if (components.length <= 1) return;
+
+        poly.Tiles = components[0];
+        for (const t of components[0]) { t.parent = poly; t.symbol = poly.id; }
+
+        for (let i = 1; i < components.length; i++) {
+            const newPoly = new Polyomino(this.poly_id_c++);
+            newPoly.Tiles = components[i];
+            for (const t of components[i]) { t.parent = newPoly; t.symbol = newPoly.id; }
+            this.Polyominoes.push(newPoly);
+        }
+    }
+
+    MergeSameTiles() {
+        let changed = true;
+        while (changed) {
+            changed = false;
+            outer:
+            for (const p of [...this.Polyominoes]) {
+                for (const tile of [...p.Tiles]) {
+                    if (!tile.name || tile.name.trim() === '') continue;
+                    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+                        const nx = tile.x + dx, ny = tile.y + dy;
+                        if (nx < 0 || nx >= this.Cols || ny < 0 || ny >= this.Rows) continue;
+                        const nb = this.coordToTile[nx]?.[ny];
+                        if (nb && !nb.isConcrete && nb !== tile && nb.name === tile.name) {
+                            this._removeTile(nb);
+                            changed = true;
+                            break outer;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    getPolyStepLimit(poly) {
+        let hasHeavy = false;
+        let minWeight = Infinity;
+        for (let tile of poly.Tiles) {
+            if (tile.isHeavy) {
+                hasHeavy = true;
+                const w = parseInt(tile.weight);
+                minWeight = Math.min(minWeight, !isNaN(w) && w >= 1 ? w : 4);
+            }
+        }
+        return hasHeavy ? minWeight : Infinity;
+    }
+
+    StepGroupMerge(direction) {
+        for (let p of this.Polyominoes) {
+            p.HasMoved = false;
+        }
+
+        let stepTaken = false;
+        let dx = 0, dy = 0;
+        let wallindex = 0;
+
+        if (direction === "N") { wallindex = -1; dy = -1; }
+        else if (direction === "S") { wallindex = this.Rows; dy = 1; }
+        else if (direction === "W") { wallindex = -1; dx = -1; }
+        else if (direction === "E") { wallindex = this.Cols; dx = 1; }
+
+        // Phase 1: Determine which polyominoes are blocked by walls, concrete, or different-group stationary tiles
+        let anyMarked = true;
+        while (anyMarked) {
+            anyMarked = false;
+
+            for (let p of this.Polyominoes) {
+                if (p.HasMoved) continue;
+
+                for (let tile of p.Tiles) {
+                    // Wall collision
+                    if ((direction === "N" || direction === "S") && tile.y + dy === wallindex) {
+                        anyMarked = true;
+                        p.HasMoved = true;
+                        break;
+                    }
+                    if ((direction === "W" || direction === "E") && tile.x + dx === wallindex) {
+                        anyMarked = true;
+                        p.HasMoved = true;
+                        break;
+                    }
+
+                    // Collision with other tiles
+                    const targetX = tile.x + dx;
+                    const targetY = tile.y + dy;
+                    if (targetX >= 0 && targetX < this.Cols && targetY >= 0 && targetY < this.Rows) {
+                        const neighbor = this.coordToTile[targetX][targetY];
+                        if (neighbor && neighbor.parent !== p) {
+                            if (neighbor.isConcrete) {
+                                anyMarked = true;
+                                p.HasMoved = true;
+                                break;
+                            }
+                            // If neighbor is stationary / blocked:
+                            if (neighbor.parent.HasMoved) {
+                                const tileGroup = (tile.group !== undefined && tile.group !== null) ? tile.group : 0;
+                                const nGroup = (neighbor.group !== undefined && neighbor.group !== null) ? neighbor.group : 0;
+                                // Different group -> blocked as normal!
+                                if (tileGroup !== nGroup) {
+                                    anyMarked = true;
+                                    p.HasMoved = true;
+                                    break;
+                                }
+                                // Same group -> will collide and merge during Phase 2; do not mark p as blocked.
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Phase 2: For any moving tile colliding with a stationary tile of the SAME group,
+        // the moving tile is consumed (disappears), and the stationary tile stays!
+        let anyMerged = true;
+        while (anyMerged) {
+            anyMerged = false;
+            for (let p of [...this.Polyominoes]) {
+                if (p.HasMoved) continue;
+
+                for (let tile of [...p.Tiles]) {
+                    const targetX = tile.x + dx;
+                    const targetY = tile.y + dy;
+                    if (targetX < 0 || targetX >= this.Cols || targetY < 0 || targetY >= this.Rows) continue;
+
+                    const target = this.coordToTile[targetX][targetY];
+                    if (target && !target.isConcrete && target.parent !== p) {
+                        if (target.parent.HasMoved) {
+                            const tileGroup = (tile.group !== undefined && tile.group !== null) ? tile.group : 0;
+                            const tGroup = (target.group !== undefined && target.group !== null) ? target.group : 0;
+                            if (tileGroup === tGroup) {
+                                this._removeTile(tile);
+                                anyMerged = true;
+                                stepTaken = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (anyMerged) break;
+            }
+        }
+
+        // Phase 3: Move all surviving unblocked polyominoes by 1 step
+        for (let p of this.Polyominoes) {
+            if (!p.HasMoved) {
+                p.HasMoved = true;
+                stepTaken = true;
+
+                for (let tile of p.Tiles) {
+                    if (this.coordToTile[tile.x] && this.coordToTile[tile.x][tile.y] === tile) {
+                        this.coordToTile[tile.x][tile.y] = null;
+                    }
+                }
+
+                for (let tile of p.Tiles) {
+                    tile.x += dx;
+                    tile.y += dy;
+                    this.coordToTile[tile.x][tile.y] = tile;
+                }
+            }
+        }
+
+        this.remapArray();
+        return stepTaken;
+    }
+
     Tumble(direction, gluesDuringMotion = false) {
         if (!["N", "S", "E", "W"].includes(direction)) {
             console.log("Invalid direction. Use N, E, S, or W");
             return;
         }
 
+        const isHeavyMode = (typeof currentMode !== 'undefined' && currentMode === 'heavy-tile');
+        const isSameNameMergeMode = (typeof currentMode !== 'undefined' && currentMode === 'merge-tile');
+
+        if (isHeavyMode) {
+            for (let p of this.Polyominoes) {
+                p._heavyRemaining = this.getPolyStepLimit(p);
+            }
+        }
+
         if (gluesDuringMotion) {
-            // TumbleGlue mode: activate glues after every individual step so that
-            // tiles can bond with each other as they "fly past" (matching glues on
-            // adjacent faces fire the moment the tiles become neighbours, even if
-            // they would continue moving past each other in a plain Tumble).
             let stepTaken = this.Step(direction);
             this.ActivateGlues();
             while (stepTaken) {
@@ -282,6 +506,12 @@ class Board {
                 stepTaken = this.Step(direction);
             }
         }
+
+        if (isHeavyMode) {
+            for (let p of this.Polyominoes) {
+                delete p._heavyRemaining;
+            }
+        }
         
         // Factory mode: remove tiles that hit borders
         if (FACTORYMODE) {
@@ -289,7 +519,6 @@ class Board {
             
             for (let p of this.Polyominoes) {
                 for (let tile of p.Tiles) {
-                    // Check if tile is at or beyond border
                     if (tile.x <= 0 || tile.x >= this.Cols - 1 || 
                         tile.y <= 0 || tile.y >= this.Rows - 1) {
                         tilesToRemove.push({poly: p, tile: tile});
@@ -297,29 +526,34 @@ class Board {
                 }
             }
             
-            // Remove tiles from polyominoes
             for (let item of tilesToRemove) {
                 const tileIndex = item.poly.Tiles.indexOf(item.tile);
                 if (tileIndex > -1) {
                     item.poly.Tiles.splice(tileIndex, 1);
-                    // Remove from coordToTile
                     this.coordToTile[item.tile.x][item.tile.y] = null;
                 }
             }
             
-            // Remove empty polyominoes
             this.Polyominoes = this.Polyominoes.filter(p => p.Tiles.length > 0);
         }
 
-        // Final glue activation (no-op in gluesDuringMotion mode since we already
-        // did it after the last step, but harmless and keeps the two paths consistent).
         this.ActivateGlues();
+
+        if (isSameNameMergeMode) {
+            this.MergeSameTiles();
+        }
     }
     
     Step(direction) {
+        if (typeof currentMode !== 'undefined' && currentMode === 'group-merge') {
+            return this.StepGroupMerge(direction);
+        }
+
+        const isHeavyMode = (typeof currentMode !== 'undefined' && currentMode === 'heavy-tile');
+
         // Reset HasMoved for all polyominoes
         for (let p of this.Polyominoes) {
-            p.HasMoved = false;
+            p.HasMoved = (isHeavyMode && Number.isFinite(p._heavyRemaining) && p._heavyRemaining <= 0);
         }
         
         let stepTaken = false;
@@ -353,24 +587,27 @@ class Board {
                     if ((direction === "N" || direction === "S") && tile.y + dy === wallindex) {
                         anyMarked = true;
                         p.HasMoved = true;
+                        break;
                     }
                     
                     if ((direction === "W" || direction === "E") && tile.x + dx === wallindex) {
                         anyMarked = true;
                         p.HasMoved = true;
+                        break;
                     }
                     
                     // Check collision with other tiles
-                    try {
-                        const neighbor = this.coordToTile[tile.x + dx][tile.y + dy];
-                        if (neighbor) {
+                    const targetX = tile.x + dx;
+                    const targetY = tile.y + dy;
+                    if (targetX >= 0 && targetX < this.Cols && targetY >= 0 && targetY < this.Rows) {
+                        const neighbor = this.coordToTile[targetX][targetY];
+                        if (neighbor && neighbor.parent !== p) {
                             if (neighbor.isConcrete || neighbor.parent.HasMoved) {
                                 anyMarked = true;
                                 p.HasMoved = true;
+                                break;
                             }
                         }
-                    } catch (e) {
-                        if (DEBUGGING) console.log("Index error in Step");
                     }
                 }
             }
@@ -384,10 +621,8 @@ class Board {
                 
                 // Clear old positions
                 for (let tile of p.Tiles) {
-                    try {
+                    if (this.coordToTile[tile.x] && this.coordToTile[tile.x][tile.y] === tile) {
                         this.coordToTile[tile.x][tile.y] = null;
-                    } catch (e) {
-                        if (DEBUGGING) console.log("Index error clearing tile");
                     }
                 }
                 
@@ -397,15 +632,15 @@ class Board {
                     tile.y += dy;
                     this.coordToTile[tile.x][tile.y] = tile;
                 }
+
+                if (isHeavyMode && Number.isFinite(p._heavyRemaining)) {
+                    p._heavyRemaining -= 1;
+                }
             }
         }
         
         // Remap all tiles
-        for (let p of this.Polyominoes) {
-            for (let tile of p.Tiles) {
-                this.coordToTile[tile.x][tile.y] = tile;
-            }
-        }
+        this.remapArray();
         
         return stepTaken;
     }
