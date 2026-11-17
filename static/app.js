@@ -195,6 +195,11 @@ function setupEventListeners() {
     document.getElementById('toggle-add-mode').addEventListener('click', toggleAddMode);
     document.getElementById('toggle-delete-mode').addEventListener('click', toggleDeleteMode);
     
+    // Concrete checkbox: lock color to dark gray while checked
+    document.getElementById('tile-concrete').addEventListener('change', (e) => {
+        syncConcreteColor(e.target.checked);
+    });
+    
     // Keyboard controls for Ctrl key, Spacebar pan, and shortcuts
     document.addEventListener('keydown', (e) => {
         // Spacebar hold for Inkscape/Figma canvas pan
@@ -2303,7 +2308,7 @@ function drawTile(tile, useHighDetail = true, c = ctx, scale = zoom) {
     c.lineWidth = 2 / scale; // Adjust line width for zoom
     c.strokeRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
 
-    // Draw control group indicator dot (never on concrete tiles)
+    // Draw control group indicator dot
     if (!tile.isConcrete && showGroupDots && (currentMode === 'control-groups' || (tile.group !== undefined && tile.group > 0))) {
         const grp = (tile.group !== undefined && tile.group !== null) ? tile.group : 0;
         const dotRadius = Math.max(3, 4.5 / scale);
@@ -2953,6 +2958,30 @@ async function loadExampleHandler() {
 // Tile Palette System
 // ============================================
 
+const CONCRETE_DEFAULT_COLOR = '#555555';
+
+/**
+ * Syncs the color picker state based on whether the concrete checkbox is checked.
+ * When concrete is checked: set color to dark gray and disable the picker.
+ * When unchecked: re-enable the picker (keeping whatever color it had before).
+ */
+function syncConcreteColor(isConcrete) {
+    const colorInput = document.getElementById('tile-color');
+    if (!colorInput) return;
+    if (isConcrete) {
+        colorInput.value = CONCRETE_DEFAULT_COLOR;
+        colorInput.disabled = true;
+        colorInput.title = 'Color is fixed for concrete tiles';
+        colorInput.style.opacity = '0.45';
+        colorInput.style.cursor = 'not-allowed';
+    } else {
+        colorInput.disabled = false;
+        colorInput.title = '';
+        colorInput.style.opacity = '';
+        colorInput.style.cursor = '';
+    }
+}
+
 function saveTileType() {
     const name = document.getElementById('tile-name').value || 'Tile ' + (tilePalette.length + 1);
     const color = document.getElementById('tile-color').value;
@@ -3001,15 +3030,16 @@ function renderTilePalette() {
     const grid = document.createElement('div');
     grid.style.cssText = `
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
-        gap: 20px 8px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 22px 8px;
         padding: 5px;
+        width: 100%;
     `;
     
     tilePalette.forEach((tileType, index) => {
         // Create wrapper for tile + label
         const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'position: relative;';
+        wrapper.style.cssText = 'position: relative; display: flex; flex-direction: column; align-items: center; padding-bottom: 18px;';
         
         const tileButton = document.createElement('div');
         tileButton.className = 'palette-tile';
@@ -3032,8 +3062,8 @@ function renderTilePalette() {
             transition: all 0.2s;
         `;
 
-        // Add control group badge if set
-        if (tileType.group !== undefined && tileType.group !== null) {
+        // Add control group badge if set (not shown for concrete tiles)
+        if (!tileType.isConcrete && tileType.group !== undefined && tileType.group !== null) {
             const groupDot = document.createElement('div');
             groupDot.style.cssText = `
                 position: absolute;
@@ -3113,24 +3143,6 @@ function renderTilePalette() {
         
         tileButton.appendChild(glueOverlay);
         
-        // Add name label
-        const nameLabel = document.createElement('div');
-        nameLabel.style.cssText = `
-            position: absolute;
-            bottom: -18px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 10px;
-            color: #333;
-            white-space: nowrap;
-            max-width: 80px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        `;
-        nameLabel.textContent = tileType.name;
-        nameLabel.title = tileType.name;
-        tileButton.appendChild(nameLabel);
-        
         // Add concrete indicator
         if (tileType.isConcrete) {
             const concreteIndicator = document.createElement('div');
@@ -3153,7 +3165,23 @@ function renderTilePalette() {
             selectPaletteTile(index);
         };
         
+        // Add name label below the tile button (inside wrapper)
+        const nameLabel = document.createElement('div');
+        nameLabel.style.cssText = `
+            font-size: 10px;
+            color: #333;
+            white-space: nowrap;
+            max-width: 70px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+            margin-top: 3px;
+        `;
+        nameLabel.textContent = tileType.name;
+        nameLabel.title = tileType.name;
+        
         wrapper.appendChild(tileButton);
+        wrapper.appendChild(nameLabel);
         grid.appendChild(wrapper);
     });
     
@@ -3175,9 +3203,11 @@ function selectPaletteTile(index) {
 }
 
 function loadTileTypeToInputs(tileType) {
+    document.getElementById('tile-concrete').checked = tileType.isConcrete;
+    // Sync color picker lock state before setting the value
+    syncConcreteColor(tileType.isConcrete);
     document.getElementById('tile-color').value = tileType.color;
     document.getElementById('tile-name').value = tileType.name;
-    document.getElementById('tile-concrete').checked = tileType.isConcrete;
     document.getElementById('glue-n').value = tileType.glues[0] === ' ' ? '' : tileType.glues[0];
     document.getElementById('glue-e').value = tileType.glues[1] === ' ' ? '' : tileType.glues[1];
     document.getElementById('glue-s').value = tileType.glues[2] === ' ' ? '' : tileType.glues[2];

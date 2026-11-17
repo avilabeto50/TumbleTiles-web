@@ -659,14 +659,10 @@ body {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: 10px;
-    max-height: 220px;
+    max-height: 320px;
     overflow-y: auto;
     background: var(--bg-muted);
     min-height: 70px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-content: flex-start;
 }
 
 .palette-actions-panel {
